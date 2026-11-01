@@ -348,7 +348,9 @@ export class SessionChrome {
 
         this._shields = [];
         this._addShield(Main.panel);
-        for (const dock of this._docks()) {
+        const docks = this._docks();
+        console.log(`[deep-work-lock] shielding top bar and ${docks.length} dock(s)`);
+        for (const dock of docks) {
             this._dimmed.push([dock, dock.opacity]);
             dock.opacity = DIM_OPACITY;
             this._addShield(dock);
