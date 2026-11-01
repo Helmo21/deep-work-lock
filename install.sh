@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Installs Deep Work Lock for the current user (GNOME extension + Chrome native host).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+UUID="deep-work-lock@deepwork.local"
+EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$UUID"
+HOST_DIR="$HOME/.local/share/deep-work-lock"
+HOST_MANIFEST_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
+HOST_NAME="org.deepworklock.host"
+
+echo "→ Extension GNOME : $EXT_DIR"
+mkdir -p "$(dirname "$EXT_DIR")"
+rm -rf "$EXT_DIR"
+cp -r "$ROOT/gnome-extension/$UUID" "$EXT_DIR"
+
+echo "→ Hôte de messagerie native : $HOST_DIR"
+mkdir -p "$HOST_DIR"
+install -m 755 "$ROOT/native-host/deep_work_lock_host.py" "$HOST_DIR/deep_work_lock_host.py"
+
+# The Chrome extension id is derived from the public key in its manifest.
+EXT_ID="$(python3 - "$ROOT/chrome-extension/manifest.json" <<'PY'
+import base64, hashlib, json, sys
+key = json.load(open(sys.argv[1]))["key"]
+digest = hashlib.sha256(base64.b64decode(key)).hexdigest()[:32]
+print("".join(chr(ord("a") + int(c, 16)) for c in digest))
+PY
+)"
+
+mkdir -p "$HOST_MANIFEST_DIR"
+cat > "$HOST_MANIFEST_DIR/$HOST_NAME.json" <<JSON
+{
+  "name": "$HOST_NAME",
+  "description": "Deep Work Lock bridge between Chrome and GNOME Shell",
+  "path": "$HOST_DIR/deep_work_lock_host.py",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://$EXT_ID/"]
+}
+JSON
+echo "→ Manifeste de l'hôte : $HOST_MANIFEST_DIR/$HOST_NAME.json"
+
+if [[ "${DWL_NO_ENABLE:-}" != "1" ]]; then
+    if gnome-extensions enable "$UUID" 2>/dev/null; then
+        echo "→ Extension GNOME activée."
+    else
+        echo "→ GNOME Shell ne connaît pas encore l'extension."
+    fi
+fi
+
+cat <<TXT
+
+Encore deux étapes :
+
+1. Recharger GNOME Shell pour qu'il découvre l'extension :
+   déconnecte-toi puis reconnecte-toi (ou Alt+F2, tape r, Entrée en X11),
+   puis lance :  gnome-extensions enable $UUID
+
+2. Charger l'extension Chrome :
+   chrome://extensions → active « Mode développeur » →
+   « Charger l'extension non empaquetée » → choisis le dossier
+   $ROOT/chrome-extension
+   Son identifiant doit être : $EXT_ID
+
+L'icône « ◉ Focus » apparaît alors à droite de la barre du haut.
+TXT
