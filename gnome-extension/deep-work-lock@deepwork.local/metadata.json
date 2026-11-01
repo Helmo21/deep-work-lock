@@ -1,0 +1,8 @@
+{
+  "uuid": "deep-work-lock@deepwork.local",
+  "name": "Deep Work Lock",
+  "description": "Verrouille l'écran sur une seule fenêtre, application ou onglet Chrome jusqu'à la fin du minuteur.",
+  "shell-version": ["46"],
+  "session-modes": ["user", "unlock-dialog"],
+  "url": ""
+}

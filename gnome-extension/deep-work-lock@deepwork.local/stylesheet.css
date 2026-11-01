@@ -1,0 +1,43 @@
+.dwl-focus-idle {
+  background-color: #e95420;
+  color: #ffffff;
+  border-radius: 4px;
+  padding: 0 7px;
+  font-weight: bold;
+}
+.dwl-countdown {
+  color: #e95420;
+  font-weight: bold;
+  font-feature-settings: "tnum";
+}
+.dwl-menu { min-width: 300px; }
+.dwl-header {
+  font-size: 0.8em;
+  font-weight: bold;
+  color: #aaaaaa;
+}
+.dwl-chips { spacing: 6px; }
+.dwl-chip {
+  background-color: #3a3a3a;
+  color: #eeeeee;
+  border-radius: 14px;
+  padding: 4px 10px;
+}
+.dwl-chip:hover, .dwl-chip:focus { background-color: #4a4a4a; }
+.dwl-chip-on, .dwl-chip-on:hover { background-color: #e95420; color: #ffffff; }
+.dwl-entry { width: 64px; }
+.dwl-target { spacing: 10px; }
+.dwl-target-title { max-width: 230px; }
+.dwl-kind { color: #888888; font-size: 0.9em; padding: 0 6px; }
+.dwl-selected { background-color: rgba(233, 84, 32, 0.28); }
+.dwl-go {
+  background-color: #e95420;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 9px;
+  font-weight: bold;
+}
+.dwl-go:hover { background-color: #f0652f; }
+.dwl-go:insensitive { background-color: #444444; color: #999999; }
+.dwl-hint { color: #888888; font-size: 0.85em; }
+.dwl-shield { background-color: transparent; }
