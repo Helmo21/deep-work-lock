@@ -142,7 +142,7 @@ test('decideStartup', () => {
   - `Lock = {kind: 'tab'|'window', tabId: number|null, windowId: number, site: string|null, lastUrl: string|null, endsAt: number}`
   - `decideNewTab(lock, tab: {id, windowId, openerTabId}) -> 'allow'|'close'` — tab : tout nouvel onglet fermé ; window : fermé si dans la fenêtre verrouillée (les autres fenêtres sont gérées par GNOME), sinon `'allow'`.
   - `decideNewWindow(lock, win: {id, type}, firstTab: {openerTabId, windowId}|null, lockedTabIdsInWindow: number[]) -> 'allow-popup'|'close'`
-  - `decideNavigation(lock, tabId, url) -> 'allow'|'revert'` — seulement l'onglet verrouillé (tab) ou un onglet de la fenêtre (window) ; revert si interne, ou (kind tab) site différent.
+  - `decideNavigation(lock, tabId, url, windowId = null) -> 'allow'|'revert'` — seulement l'onglet verrouillé (tab) ou un onglet de la fenêtre (window) ; revert si interne, ou (kind tab) site différent.
   - `decideTabRemoved(lock, tabId, windowClosing) -> {action: 'none'|'reopen', url?, inWindow?: number|null}`
   - `decideTabAttached(lock, tabId, newWindowId) -> {action: 'none'|'move-back'}`
   - `dnrRules(lock) -> object[]` — règle de session id 1 : `{action:{type:'block'}, condition:{tabIds:[tabId], resourceTypes:['main_frame'], excludedRequestDomains:[site]}}` pour kind tab, `[]` sinon.
