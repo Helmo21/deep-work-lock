@@ -81,6 +81,13 @@ test('isWindowAllowed rejects unannounced chrome window', () => {
     assert.equal(isWindowAllowed({...c, createdAfterLock: false}, tabTarget, ctx()), false);
 });
 
+test('announced chrome popup allowed for a chrome window target', () => {
+    const t = {kind: 'window', windowId: 'T', appId: 'google-chrome.desktop'};
+    const c = win({id: 'P', appId: 'google-chrome.desktop', isChrome: true, createdAfterLock: true});
+    assert.equal(isWindowAllowed(c, t, ctx()), false);
+    assert.equal(isWindowAllowed(c, t, ctx({announcedIds: new Set(['P'])})), true);
+});
+
 test('matchChromeWindows', () => {
     const m = matchChromeWindows(
         [{id: 'a', title: 'Article - Google Docs - Google Chrome'},

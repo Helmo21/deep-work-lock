@@ -277,7 +277,7 @@ export class WindowGuard {
                     this._bindTargetWindow(win);
                 return GLib.SOURCE_REMOVE;
             }
-            if (this._target.kind === 'tab' && isChromeWindow(win)) {
+            if (isChromeWindow(win)) {
                 if (Date.now() < this._allowUntil) {
                     this._allowUntil = 0;
                     this._announce(win, this._allowReason);

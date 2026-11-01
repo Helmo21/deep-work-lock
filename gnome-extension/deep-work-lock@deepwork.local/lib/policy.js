@@ -45,6 +45,9 @@ export function isWindowAllowed(win, target, ctx) {
         return true;
     if (target.windowId && win.transientChain.includes(target.windowId))
         return true;
+    // Chrome windows the Chrome extension vouched for (auth popups).
+    if (ctx.announcedIds.has(win.id))
+        return true;
 
     const sameApp = !!win.appId && win.appId === target.appId;
 
