@@ -15,9 +15,32 @@ import {ShellService, chromeCall} from './lib/dbus.js';
 
 const log = msg => console.log(`[deep-work-lock] ${msg}`);
 
+// ExpectChromeWindow carries JSON {reason, bounds}; accept a bare reason too.
+function parseExpect(detail) {
+    try {
+        const parsed = JSON.parse(detail);
+        if (parsed && typeof parsed === 'object')
+            return {reason: parsed.reason ?? 'popup', bounds: parsed.bounds ?? null};
+    } catch {}
+    return {reason: String(detail), bounds: null};
+}
+
 export default class DeepWorkLockExtension extends Extension {
     enable() {
         this._session = null;
+
+        // Crash/reboot recovery runs first, so nothing below can prevent it.
+        const state = readState();
+        const startup = decideStartup(state, currentBootId(), Date.now());
+        if (startup === 'restore') {
+            log('previous session found after reboot or expiry: restoring settings');
+            try {
+                restoreSettings(state.saved);
+                clearState();
+            } catch (e) {
+                console.error(`[deep-work-lock] restore failed, state file kept: ${e.message}`);
+            }
+        }
 
         this._indicator = new FocusIndicator({
             onLock: ({minutes, target}) => this._lock(minutes, target),
@@ -31,35 +54,41 @@ export default class DeepWorkLockExtension extends Extension {
 
         this._service = new ShellService({
             getLock: () => this._lockInfo(),
-            expectChromeWindow: reason => this._guard.expectChromeWindow(reason),
+            expectChromeWindow: detail => this._guard.expectChromeWindow(parseExpect(detail)),
         });
-        this._service.export();
+        try {
+            this._service.export();
+        } catch (e) {
+            console.error(`[deep-work-lock] D-Bus export failed: ${e.message}`);
+        }
 
         this._sessionModeId = Main.sessionMode.connect('updated', () => this._onSessionModeUpdated());
 
-        const state = readState();
-        switch (decideStartup(state, currentBootId(), Date.now())) {
-        case 'restore':
-            log('previous session found after reboot or expiry: restoring settings');
-            restoreSettings(state.saved);
-            clearState();
-            break;
-        case 'resume':
+        if (startup === 'resume') {
             log('resuming session after a GNOME Shell restart');
-            applyPlan();
-            this._startSession(state);
-            break;
+            try {
+                applyPlan();
+                this._startSession(state);
+            } catch (e) {
+                console.error(`[deep-work-lock] resume failed: ${e.message}`);
+                this._abortSession(state);
+            }
         }
     }
 
     disable() {
-        if (this._session) {
-            this._stopEnforcement();
-            restoreSettings(this._session.saved);
-            // Keep the file while time remains, so a Shell restart resumes.
-            if (Date.now() >= this._session.endsAt)
-                clearState();
-            this._session = null;
+        const state = this._session;
+        this._session = null;
+        if (state) {
+            // Settings first: whatever fails afterwards, the desktop is usable.
+            try {
+                restoreSettings(state.saved);
+            } finally {
+                // Keep the file while time remains, so a Shell restart resumes.
+                if (Date.now() >= state.endsAt)
+                    clearState();
+                this._stopEnforcement();
+            }
         }
         Main.sessionMode.disconnect(this._sessionModeId);
         this._service.unexport();
@@ -96,11 +125,17 @@ export default class DeepWorkLockExtension extends Extension {
         };
 
         // Persist the original values before touching anything.
-        captureAndApply(saved => {
-            state.saved = saved;
-            writeState(state);
-        });
-        this._startSession(state);
+        try {
+            captureAndApply(saved => {
+                state.saved = saved;
+                writeState(state);
+            });
+            this._startSession(state);
+        } catch (e) {
+            console.error(`[deep-work-lock] lock failed: ${e.message}`);
+            this._abortSession(state);
+            return;
+        }
 
         const chromeLock = this._chromeLockRequest(state, win);
         if (chromeLock) {
@@ -150,14 +185,29 @@ export default class DeepWorkLockExtension extends Extension {
 
     _endSession() {
         const state = this._session;
-        this._stopEnforcement();
-        restoreSettings(state.saved);
-        clearState();
         this._session = null;
-        this._indicator.setIdle();
-        chromeCall('Unlock').catch(() => {});
-        global.display.get_sound_player().play_from_theme('complete', 'Session Deep Work terminée', null);
-        log('session finished');
+        try {
+            restoreSettings(state.saved);
+            clearState();
+        } finally {
+            this._stopEnforcement();
+            this._indicator.setIdle();
+            chromeCall('Unlock').catch(() => {});
+            global.display.get_sound_player().play_from_theme('complete', 'Session Deep Work terminée', null);
+            log('session finished');
+        }
+    }
+
+    /** Something went wrong while starting: give the desktop back. */
+    _abortSession(state) {
+        this._session = null;
+        try {
+            restoreSettings(state.saved);
+            clearState();
+        } finally {
+            this._stopEnforcement();
+            this._indicator?.setIdle();
+        }
     }
 
     _stopEnforcement() {
@@ -165,8 +215,13 @@ export default class DeepWorkLockExtension extends Extension {
             GLib.source_remove(this._tickId);
             this._tickId = 0;
         }
-        this._guard.stop();
-        this._chrome.leave();
+        for (const step of [() => this._guard?.stop(), () => this._chrome?.leave()]) {
+            try {
+                step();
+            } catch (e) {
+                console.error(`[deep-work-lock] cleanup error: ${e.message}`);
+            }
+        }
     }
 
     // ---- helpers ------------------------------------------------------------

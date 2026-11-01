@@ -5,9 +5,30 @@ import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+
 import {isWindowAllowed} from './policy.js';
 
 const ANNOUNCE_WINDOW_MS = 3000;
+const BOUNDS_TOLERANCE_PX = 60;
+
+/**
+ * Bring a window up, switching to its workspace if needed. A plain
+ * activate() on another workspace only marks the window as urgent.
+ */
+function focusWindow(win) {
+    Main.activateWindow(win, global.display.get_current_time_roundtrip());
+}
+
+function boundsMatch(win, bounds) {
+    if (!bounds)
+        return true;
+    const r = win.get_frame_rect();
+    return Math.abs(r.x - bounds.left) <= BOUNDS_TOLERANCE_PX &&
+        Math.abs(r.y - bounds.top) <= BOUNDS_TOLERANCE_PX &&
+        Math.abs(r.width - bounds.width) <= BOUNDS_TOLERANCE_PX &&
+        Math.abs(r.height - bounds.height) <= BOUNDS_TOLERANCE_PX;
+}
 
 const TYPE_NAMES = new Map([
     [Meta.WindowType.NORMAL, 'normal'],
@@ -73,7 +94,8 @@ export class WindowGuard {
         this._announced = new Set();
         this._pending = [];
         this._allowUntil = 0;
-        this._allowReason = null;
+        this._allowDetail = null;
+        this._queue = [];
         this._minimized = new Map(); // Meta.Window -> unmanaged handler id
         this._signals = [];
         this._targetSignals = [];
@@ -87,8 +109,10 @@ export class WindowGuard {
 
         this._bindTargetWindow(this._target.windowId ? findWindowById(this._target.windowId) : null);
 
+        // Windows the user had already minimized are left alone (and are not
+        // unminimized at the end).
         for (const win of listWindows()) {
-            if (!this._isAllowed(win))
+            if (!win.minimized && !this._isAllowed(win))
                 this._hide(win);
         }
         this.activateTarget();
@@ -106,6 +130,10 @@ export class WindowGuard {
             GLib.source_remove(this._idleId);
             this._idleId = 0;
         }
+        this._queue = [];
+        for (const p of this._pending)
+            p.win.disconnect(p.handler);
+        this._pending = [];
         if (this._nullFocusId) {
             GLib.source_remove(this._nullFocusId);
             this._nullFocusId = 0;
@@ -125,19 +153,44 @@ export class WindowGuard {
             this._later(() => this.activateTarget());
     }
 
-    /** The Chrome extension vouches for a Chrome window it just opened. */
-    expectChromeWindow(reason) {
+    /**
+     * The Chrome extension vouches for a Chrome window it just opened.
+     * @param detail {reason: 'popup'|'relocated', bounds: {left, top, width, height}|null}
+     */
+    expectChromeWindow({reason, bounds}) {
         if (!this._active)
             return;
-        const now = Date.now();
-        this._pending = this._pending.filter(p => now - p.time < ANNOUNCE_WINDOW_MS);
-        const latest = this._pending.pop();
-        if (latest) {
-            this._announce(latest.win, reason);
+        this._prunePending();
+        // Newest first; with bounds, only a window of that size and place.
+        const match = [...this._pending].reverse().find(p => boundsMatch(p.win, bounds));
+        if (match) {
+            this._dropPending(match);
+            this._announce(match.win, reason);
         } else {
-            this._allowUntil = now + ANNOUNCE_WINDOW_MS;
-            this._allowReason = reason;
+            this._allowUntil = Date.now() + ANNOUNCE_WINDOW_MS;
+            this._allowDetail = {reason, bounds};
         }
+    }
+
+    _prunePending() {
+        const now = Date.now();
+        for (const p of [...this._pending]) {
+            if (now - p.time >= ANNOUNCE_WINDOW_MS)
+                this._dropPending(p);
+        }
+    }
+
+    _dropPending(entry) {
+        entry.win.disconnect(entry.handler);
+        this._pending = this._pending.filter(p => p !== entry);
+    }
+
+    _addPending(win) {
+        const entry = {win, time: Date.now(), handler: 0};
+        entry.handler = win.connect('unmanaged', () => {
+            this._pending = this._pending.filter(p => p !== entry);
+        });
+        this._pending.push(entry);
     }
 
     /** Windows the user may work in, best candidate first. */
@@ -153,7 +206,7 @@ export class WindowGuard {
         const main = this._target.windowId ? findWindowById(this._target.windowId) : null;
         const win = main ?? this.allowedWindows()[0];
         if (win)
-            win.activate(global.get_current_time());
+            focusWindow(win);
     }
 
     // ---- internals ------------------------------------------------------
@@ -163,12 +216,17 @@ export class WindowGuard {
     }
 
     _later(fn) {
+        this._queue.push(fn);
         if (this._idleId)
             return;
         this._idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             this._idleId = 0;
-            if (this._active && !this._suspended)
-                fn();
+            const queue = this._queue;
+            this._queue = [];
+            for (const f of queue) {
+                if (this._active && !this._suspended)
+                    f();
+            }
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -235,7 +293,7 @@ export class WindowGuard {
         if (reason === 'relocated' || this._targetGone)
             this._bindTargetWindow(win);
         win.unminimize();
-        win.activate(global.get_current_time());
+        focusWindow(win);
     }
 
     _onFocusChanged() {
@@ -278,12 +336,12 @@ export class WindowGuard {
                 return GLib.SOURCE_REMOVE;
             }
             if (isChromeWindow(win)) {
-                if (Date.now() < this._allowUntil) {
+                if (Date.now() < this._allowUntil && boundsMatch(win, this._allowDetail.bounds)) {
                     this._allowUntil = 0;
-                    this._announce(win, this._allowReason);
+                    this._announce(win, this._allowDetail.reason);
                     return GLib.SOURCE_REMOVE;
                 }
-                this._pending.push({win, time: Date.now()});
+                this._addPending(win);
             }
             this._hide(win);
             if (!this._suspended) {

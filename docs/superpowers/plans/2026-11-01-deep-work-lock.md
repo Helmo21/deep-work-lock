@@ -30,7 +30,7 @@
 - **Redémarrage de GNOME Shell** : si le fichier d'état existe, que le `boot_id` est le même et que l'échéance n'est pas passée, la session **reprend**. Sinon (redémarrage machine ou échéance passée) : restauration des réglages et suppression du fichier.
 - **Correspondance X11 ⇄ Chrome** : titre X11 = `<titre de l'onglet actif> - Google Chrome[…]`. Appariement glouton unique par préfixe.
 - **Popups légitimes** : une fenêtre Chrome de type `popup` ouverte par l'onglet verrouillé est autorisée. GNOME minimise d'abord toute nouvelle fenêtre Chrome, puis la libère si l'extension Chrome l'annonce (`ExpectChromeWindow`) dans les 3 s. Fenêtres incognito et DevTools détachées ne sont jamais annoncées, donc restent minimisées.
-- **Même site** : domaine enregistrable (eTLD+1 approché : deux derniers labels, trois pour une liste courte de suffixes `co.uk`, `com.au`, `co.jp`, `com.br`, `co.nz`, `org.uk`, `gouv.fr`). Permet `docs.google.com` → `accounts.google.com`.
+- **Même site** : l'hôte de l'onglet verrouillé (sans `www.`) et ses sous-domaines, plus une liste fixe d'hôtes de connexion (`accounts.google.com`, `login.microsoftonline.com`, `login.live.com`, `login.microsoft.com`, `appleid.apple.com`). Navigation hors site bloquée par la règle DNR, sans retour arrière (pas de boucle de redirection). Popups soumises à la même règle.
 - **Son de fin** : `global.display.get_sound_player().play_from_theme('complete', …)`.
 - **Cible fenêtre Chrome entière** : en plus du verrou bureau, Chrome ferme les nouveaux onglets et fenêtres (sauf popups des onglets de la fenêtre) et bloque `chrome://`.
 

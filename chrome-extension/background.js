@@ -2,7 +2,7 @@
 // the native messaging host. Decisions live in lock.js.
 
 import {
-    siteOf, decideNewTab, decideNewWindow, decideNavigation,
+    siteOf, decideNewTab, decideNewWindow, decideNavigation, decidePopupNavigation,
     decideTabRemoved, decideTabAttached, dnrRules, restoreLock,
 } from './lock.js';
 
@@ -13,7 +13,7 @@ let lock = null;
 let port = null;
 let retryDelay = 1000;
 let ownTabCreations = 0;
-const allowedPopups = new Set();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- state --------------------------------------------------------------
 
@@ -42,7 +42,6 @@ async function saveLock(next) {
 
 async function clearLock() {
     lock = null;
-    allowedPopups.clear();
     await chrome.storage.session.remove(STORAGE_KEY);
     await chrome.declarativeNetRequest.updateSessionRules({removeRuleIds: [1]});
 }
@@ -136,10 +135,11 @@ async function lockFromRequest({kind, tabId, windowId, endsAt}) {
         await chrome.tabs.update(tab.id, {active: true});
         await chrome.windows.update(tab.windowId, {focused: true});
         await saveLock({kind, tabId: tab.id, windowId: tab.windowId,
-            site: siteOf(tab.url), lastUrl: tab.url, endsAt});
+            site: siteOf(tab.url), lastUrl: tab.url, endsAt, popupTabs: [], popupWindows: []});
     } else {
         await chrome.windows.update(windowId, {focused: true});
-        await saveLock({kind: 'window', tabId: null, windowId, site: null, lastUrl: null, endsAt});
+        await saveLock({kind: 'window', tabId: null, windowId, site: null, lastUrl: null, endsAt,
+            popupTabs: [], popupWindows: []});
     }
     return lock;
 }
@@ -147,6 +147,8 @@ async function lockFromRequest({kind, tabId, windowId, endsAt}) {
 // ---- enforcement --------------------------------------------------------
 
 async function revertTab(tabId) {
+    if (!lock)
+        return;
     if (lock.kind === 'tab' && lock.lastUrl) {
         await chrome.tabs.update(tabId, {url: lock.lastUrl}).catch(ignore);
         return;
@@ -157,6 +159,8 @@ async function revertTab(tabId) {
 chrome.tabs.onCreated.addListener(async tab => {
     const l = await current();
     if (!l || ownTabCreations > 0)
+        return;
+    if (l.popupWindows?.includes(tab.windowId))
         return;
     const win = await chrome.windows.get(tab.windowId).catch(() => null);
     if (!win || win.type === 'popup')
@@ -170,25 +174,42 @@ chrome.windows.onCreated.addListener(async win => {
     if (!l || ownTabCreations > 0)
         return;
     // A popup's tab may not exist yet when the window event fires.
-    await new Promise(r => setTimeout(r, 150));
+    await sleep(150);
     const tabs = await chrome.tabs.query({windowId: win.id});
+    // The locked tab dragged out of its window: onAttached moves it back.
+    if (tabs.some(t => t.id === l.tabId))
+        return;
     const lockedWindowTabs = l.kind === 'window'
         ? (await chrome.tabs.query({windowId: l.windowId})).map(t => t.id)
         : [];
-    // window.open() does not always set openerTabId: then trust the popup,
-    // since every other Chrome window is hidden by the desktop lock.
+    // window.open() does not always set openerTabId: then trust the popup.
+    // It stays confined to the locked site by the DNR rule and onUpdated.
     const first = tabs[0]
         ? {...tabs[0], openerTabId: tabs[0].openerTabId ?? (l.kind === 'tab' ? l.tabId : lockedWindowTabs[0])}
         : null;
-    if (decideNewWindow(l, win, first, lockedWindowTabs) === 'allow-popup') {
-        allowedPopups.add(win.id);
-        send({type: 'expectWindow', reason: 'popup'});
-    } else {
+    if (decideNewWindow(l, win, first, lockedWindowTabs) !== 'allow-popup') {
         await chrome.windows.remove(win.id).catch(ignore);
+        return;
     }
+    const fresh = await current();
+    if (!fresh)
+        return;
+    await saveLock({...fresh,
+        popupWindows: [...(fresh.popupWindows ?? []), win.id],
+        popupTabs: [...(fresh.popupTabs ?? []), ...tabs.map(t => t.id)]});
+    const bounds = await chrome.windows.get(win.id)
+        .then(w => ({left: w.left, top: w.top, width: w.width, height: w.height}))
+        .catch(() => null);
+    send({type: 'expectWindow', reason: 'popup', bounds});
+    if (first?.url)
+        await checkPopupNavigation(first.id, first.url, win.id);
 }, {windowTypes: ['normal', 'popup']});
 
-chrome.windows.onRemoved.addListener(id => allowedPopups.delete(id));
+chrome.windows.onRemoved.addListener(async id => {
+    const l = await current();
+    if (l?.popupWindows?.includes(id))
+        await saveLock({...l, popupWindows: l.popupWindows.filter(w => w !== id)});
+});
 
 chrome.tabs.onActivated.addListener(async ({tabId, windowId}) => {
     const l = await current();
@@ -196,22 +217,29 @@ chrome.tabs.onActivated.addListener(async ({tabId, windowId}) => {
         await chrome.tabs.update(l.tabId, {active: true}).catch(ignore);
 });
 
-chrome.windows.onFocusChanged.addListener(async windowId => {
+// No refocusing on windows.onFocusChanged: GNOME already enforces focus, and
+// two enforcers disagreeing about the window would loop.
+
+async function checkPopupNavigation(tabId, url, windowId) {
     const l = await current();
-    if (!l || windowId === chrome.windows.WINDOW_ID_NONE)
-        return;
-    if (windowId !== l.windowId && !allowedPopups.has(windowId))
-        await chrome.windows.update(l.windowId, {focused: true}).catch(ignore);
-});
+    if (l?.popupWindows?.includes(windowId) && decidePopupNavigation(l, url) === 'close')
+        await chrome.windows.remove(windowId).catch(ignore);
+}
 
 async function checkNavigation(tabId, url, windowId) {
     const l = await current();
     if (!l || !url)
         return;
-    if (decideNavigation(l, tabId, url, windowId) === 'revert') {
+    if (l.popupWindows?.includes(windowId)) {
+        await checkPopupNavigation(tabId, url, windowId);
+        return;
+    }
+    const decision = decideNavigation(l, tabId, url, windowId);
+    if (decision === 'revert') {
         await revertTab(tabId);
-    } else if (l.kind === 'tab' && tabId === l.tabId && siteOf(url) === l.site) {
-        await saveLock({...l, lastUrl: url});
+    } else if (decision === 'allow' && l.kind === 'tab' && tabId === l.tabId && siteOf(url)) {
+        // A lock started on a non-web page adopts the first site visited.
+        await saveLock({...l, site: l.site ?? siteOf(url), lastUrl: url});
     }
 }
 
@@ -224,8 +252,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async details => {
     if (details.frameId !== 0)
         return;
     const l = await current();
-    if (l && decideNavigation(l, details.tabId, details.url, l.windowId) === 'revert' &&
-        l.kind === 'tab')
+    if (l?.kind === 'tab' && decideNavigation(l, details.tabId, details.url) === 'revert')
         await revertTab(details.tabId);
 });
 
@@ -240,11 +267,13 @@ chrome.tabs.onRemoved.addListener(async (tabId, {isWindowClosing}) => {
         if (decision.inWindow !== null) {
             tab = await chrome.tabs.create({windowId: decision.inWindow, url: decision.url, active: true});
         } else {
-            send({type: 'expectWindow', reason: 'relocated'});
+            send({type: 'expectWindow', reason: 'relocated', bounds: null});
             const win = await chrome.windows.create({url: decision.url, focused: true});
             tab = win.tabs[0];
         }
-        await saveLock({...l, tabId: tab.id, windowId: tab.windowId});
+        const fresh = await current();
+        if (fresh)
+            await saveLock({...fresh, tabId: tab.id, windowId: tab.windowId});
     } finally {
         ownTabCreations--;
     }
@@ -254,13 +283,21 @@ chrome.tabs.onAttached.addListener(async (tabId, {newWindowId}) => {
     const l = await current();
     if (decideTabAttached(l, tabId, newWindowId).action !== 'move-back')
         return;
-    try {
-        await chrome.tabs.move(tabId, {windowId: l.windowId, index: -1});
-        await chrome.tabs.update(tabId, {active: true});
-        await chrome.windows.update(l.windowId, {focused: true});
-    } catch {
-        // the original window is gone: follow the tab
+    const originalExists = await chrome.windows.get(l.windowId).then(() => true, () => false);
+    if (!originalExists) {
         await saveLock({...l, windowId: newWindowId});
+        return;
+    }
+    // Moving fails while the user is still dragging: retry for a few seconds.
+    for (let attempt = 0; attempt < 15; attempt++) {
+        try {
+            await chrome.tabs.move(tabId, {windowId: l.windowId, index: -1});
+            await chrome.tabs.update(tabId, {active: true});
+            await chrome.windows.update(l.windowId, {focused: true});
+            return;
+        } catch {
+            await sleep(300);
+        }
     }
 });
 

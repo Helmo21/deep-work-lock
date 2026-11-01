@@ -1,16 +1,25 @@
 // Pure decisions for the Chrome side of the lock. No chrome.* calls here.
 //
-// Lock = {kind: 'tab'|'window', tabId, windowId, site, lastUrl, endsAt}
+// Lock = {kind: 'tab'|'window', tabId, windowId, site, lastUrl, endsAt,
+//         popupTabs: number[], popupWindows: number[]}
+//
+// "site" is the host of the locked tab (spec: "l'origine de l'onglet"), with
+// a leading "www." dropped. Its subdomains are allowed, siblings are not:
+// a lock on docs.google.com does not open mail.google.com.
 
-const MULTI_PART_SUFFIXES = new Set([
-    'co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'co.jp', 'com.br',
-    'co.nz', 'gouv.fr', 'co.in', 'com.mx',
-]);
+// Sign-in pages a locked site may need to bounce through.
+export const IDENTITY_HOSTS = [
+    'accounts.google.com',
+    'login.microsoftonline.com',
+    'login.live.com',
+    'login.microsoft.com',
+    'appleid.apple.com',
+];
 
 const WEB_SCHEMES = new Set(['http:', 'https:']);
 const HARMLESS_URLS = /^(about:blank|about:srcdoc|data:|blob:)/;
 
-/** Registrable domain ("same site") of an http(s) URL, or null. */
+/** Locked host of an http(s) URL, or null. */
 export function siteOf(url) {
     let parsed;
     try {
@@ -20,13 +29,7 @@ export function siteOf(url) {
     }
     if (!WEB_SCHEMES.has(parsed.protocol))
         return null;
-    const host = parsed.hostname.replace(/\.$/, '');
-    if (/^[\d.]+$/.test(host) || host.includes(':') || !host.includes('.'))
-        return host;
-    const labels = host.split('.');
-    const lastTwo = labels.slice(-2).join('.');
-    const keep = MULTI_PART_SUFFIXES.has(lastTwo) ? 3 : 2;
-    return labels.slice(-keep).join('.');
+    return parsed.hostname.replace(/\.$/, '').replace(/^www\./, '').toLowerCase();
 }
 
 export function isInternalUrl(url) {
@@ -37,6 +40,15 @@ export function isInternalUrl(url) {
     } catch {
         return false;
     }
+}
+
+const withinHost = (host, base) => host === base || host.endsWith(`.${base}`);
+
+export function hostAllowed(lockSite, url) {
+    const host = siteOf(url);
+    if (host === null || !lockSite)
+        return true;
+    return withinHost(host, lockSite) || IDENTITY_HOSTS.some(h => withinHost(host, h));
 }
 
 export function decideNewTab(lock, tab) {
@@ -61,6 +73,10 @@ export function decideNewWindow(lock, win, firstTab, lockedTabIdsInWindow) {
     return lockedTabIdsInWindow.includes(opener) ? 'allow-popup' : 'close';
 }
 
+/**
+ * 'revert' goes back to the last allowed page; 'block' leaves it to the
+ * declarativeNetRequest rule (no revert, so redirect chains cannot loop).
+ */
 export function decideNavigation(lock, tabId, url, windowId = null) {
     if (!lock)
         return 'allow';
@@ -69,14 +85,20 @@ export function decideNavigation(lock, tabId, url, windowId = null) {
             return 'allow';
         if (isInternalUrl(url))
             return 'revert';
-        const site = siteOf(url);
-        if (site === null || !lock.site)
-            return 'allow';
-        return site === lock.site ? 'allow' : 'revert';
+        return hostAllowed(lock.site, url) ? 'allow' : 'block';
     }
     if (windowId !== lock.windowId)
         return 'allow';
     return isInternalUrl(url) ? 'revert' : 'allow';
+}
+
+/** A popup opened by the locked tab must stay on the locked site. */
+export function decidePopupNavigation(lock, url) {
+    if (!lock || lock.kind !== 'tab')
+        return isInternalUrl(url) ? 'close' : 'allow';
+    if (isInternalUrl(url))
+        return 'close';
+    return hostAllowed(lock.site, url) ? 'allow' : 'close';
 }
 
 export function decideTabRemoved(lock, tabId, windowClosing) {
@@ -99,9 +121,9 @@ export function dnrRules(lock) {
         priority: 1,
         action: {type: 'block'},
         condition: {
-            tabIds: [lock.tabId],
+            tabIds: [lock.tabId, ...(lock.popupTabs ?? [])],
             resourceTypes: ['main_frame'],
-            excludedRequestDomains: [lock.site],
+            excludedRequestDomains: [lock.site, ...IDENTITY_HOSTS],
         },
     }];
 }

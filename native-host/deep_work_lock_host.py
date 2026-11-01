@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Native messaging host: bridges the Chrome extension and the GNOME Shell
 extension over the D-Bus session bus.
 
@@ -103,16 +103,20 @@ class Bridge:
         sys.stdout.buffer.flush()
 
     def on_stdin(self, fd, condition):
-        if condition & (self.GLib.IO_HUP | self.GLib.IO_ERR):
-            chunk = b""
-        else:
-            chunk = os.read(fd, 65536)
-        if not chunk:
-            log("stdin closed, exiting")
-            self.loop.quit()
-            return False
-        for message in self.reader.feed(chunk):
-            self.on_chrome_message(message)
+        # Any exception here would silently remove the watch, so catch all.
+        try:
+            chunk = os.read(fd, 65536) if condition & self.GLib.IO_IN else b""
+            if not chunk:
+                log("stdin closed, exiting")
+                self.loop.quit()
+                return False
+            for message in self.reader.feed(chunk):
+                try:
+                    self.on_chrome_message(message)
+                except Exception as error:  # noqa: BLE001
+                    log(f"error handling {message!r}: {error}")
+        except Exception as error:  # noqa: BLE001
+            log(f"stdin error: {error}")
         return True
 
     def on_chrome_message(self, message):
@@ -132,7 +136,8 @@ class Bridge:
         if kind == "getLock":
             self.call_shell("GetLock", None, self._reply_lock_state)
         elif kind == "expectWindow":
-            arg = self.GLib.Variant("(s)", (str(message.get("reason", "popup")),))
+            detail = {"reason": str(message.get("reason", "popup")), "bounds": message.get("bounds")}
+            arg = self.GLib.Variant("(s)", (json.dumps(detail),))
             self.call_shell("ExpectChromeWindow", arg, None)
         elif kind == "hello":
             log("Chrome extension connected")
@@ -148,6 +153,11 @@ class Bridge:
 
     # ---- D-Bus side --------------------------------------------------
     def call_shell(self, method, args, callback):
+        if self.connection is None:
+            if callback:
+                callback(None)
+            return
+
         def done(conn, res):
             try:
                 result = conn.call_finish(res)
@@ -181,16 +191,15 @@ class Bridge:
             invocation.return_dbus_error("org.deepworklock.Error.Timeout", "Chrome did not answer")
         return True
 
-    def on_bus_acquired(self, conn, name):
-        self.connection = conn
-        info = self.Gio.DBusNodeInfo.new_for_xml(BRIDGE_XML)
-        conn.register_object(BRIDGE_PATH, info.interfaces[0], self.on_method_call, None, None)
-
     def run(self):
+        # Connect synchronously so Chrome's first messages can be answered.
+        self.connection = self.Gio.bus_get_sync(self.Gio.BusType.SESSION, None)
+        info = self.Gio.DBusNodeInfo.new_for_xml(BRIDGE_XML)
+        self.connection.register_object(BRIDGE_PATH, info.interfaces[0],
+                                        self.on_method_call, None, None)
         flags = (self.Gio.BusNameOwnerFlags.REPLACE
                  | self.Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT)
-        self.Gio.bus_own_name(self.Gio.BusType.SESSION, BRIDGE_NAME, flags,
-                              self.on_bus_acquired, None, None)
+        self.Gio.bus_own_name_on_connection(self.connection, BRIDGE_NAME, flags, None, None)
         self.GLib.io_add_watch(0, self.GLib.PRIORITY_DEFAULT,
                                self.GLib.IO_IN | self.GLib.IO_HUP | self.GLib.IO_ERR,
                                self.on_stdin)

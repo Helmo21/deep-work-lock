@@ -2,16 +2,17 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
     siteOf, isInternalUrl, decideNewTab, decideNewWindow, decideNavigation,
-    decideTabRemoved, decideTabAttached, dnrRules, restoreLock,
+    decidePopupNavigation, decideTabRemoved, decideTabAttached, dnrRules, restoreLock,
+    IDENTITY_HOSTS,
 } from '../chrome-extension/lock.js';
 
-const tabLock = o => ({kind: 'tab', tabId: 5, windowId: 2, site: 'google.com',
+const tabLock = o => ({kind: 'tab', tabId: 5, windowId: 2, site: 'docs.google.com',
     lastUrl: 'https://docs.google.com/d/1', endsAt: 10_000, ...o});
 const winLock = o => ({kind: 'window', tabId: null, windowId: 2, site: null,
     lastUrl: null, endsAt: 10_000, ...o});
 
 test('siteOf', () => {
-    assert.equal(siteOf('https://docs.google.com/x'), 'google.com');
+    assert.equal(siteOf('https://docs.google.com/x'), 'docs.google.com');
     assert.equal(siteOf('https://www.bbc.co.uk/news'), 'bbc.co.uk');
     assert.equal(siteOf('http://localhost:3000/a'), 'localhost');
     assert.equal(siteOf('https://127.0.0.1/'), '127.0.0.1');
@@ -45,8 +46,13 @@ test('decideNewWindow', () => {
 });
 
 test('decideNavigation', () => {
+    assert.equal(decideNavigation(tabLock(), 5, 'https://docs.google.com/d/2'), 'allow');
     assert.equal(decideNavigation(tabLock(), 5, 'https://accounts.google.com/x'), 'allow');
-    assert.equal(decideNavigation(tabLock(), 5, 'https://claude.ai'), 'revert');
+    assert.equal(decideNavigation(tabLock(), 5, 'https://mail.google.com/'), 'block');
+    assert.equal(decideNavigation(tabLock(), 5, 'https://gemini.google.com/'), 'block');
+    assert.equal(decideNavigation(tabLock(), 5, 'https://claude.ai'), 'block');
+    assert.equal(decideNavigation(tabLock({site: 'example.com'}), 5, 'https://www.example.com/a'), 'allow');
+    assert.equal(decideNavigation(tabLock({site: null}), 5, 'https://claude.ai'), 'allow');
     assert.equal(decideNavigation(tabLock(), 5, 'chrome://newtab'), 'revert');
     assert.equal(decideNavigation(tabLock(), 6, 'https://claude.ai'), 'allow');
     assert.equal(decideNavigation(tabLock(), 5, 'about:blank'), 'allow');
@@ -54,6 +60,14 @@ test('decideNavigation', () => {
     assert.equal(decideNavigation(winLock(), 7, 'chrome://settings', 2), 'revert');
     assert.equal(decideNavigation(winLock(), 7, 'https://claude.ai', 2), 'allow');
     assert.equal(decideNavigation(winLock(), 7, 'chrome://settings', 3), 'allow');
+});
+
+test('decidePopupNavigation', () => {
+    assert.equal(decidePopupNavigation(tabLock(), 'https://accounts.google.com/o/oauth2'), 'allow');
+    assert.equal(decidePopupNavigation(tabLock(), 'about:blank'), 'allow');
+    assert.equal(decidePopupNavigation(tabLock(), 'https://claude.ai'), 'close');
+    assert.equal(decidePopupNavigation(tabLock(), 'chrome://settings'), 'close');
+    assert.equal(decidePopupNavigation(winLock(), 'https://claude.ai'), 'allow');
 });
 
 test('decideTabRemoved', () => {
@@ -72,9 +86,10 @@ test('decideTabAttached', () => {
 });
 
 test('dnrRules', () => {
-    assert.deepEqual(dnrRules(tabLock()), [{
+    assert.deepEqual(dnrRules(tabLock({popupTabs: [8]})), [{
         id: 1, priority: 1, action: {type: 'block'},
-        condition: {tabIds: [5], resourceTypes: ['main_frame'], excludedRequestDomains: ['google.com']},
+        condition: {tabIds: [5, 8], resourceTypes: ['main_frame'],
+            excludedRequestDomains: ['docs.google.com', ...IDENTITY_HOSTS]},
     }]);
     assert.deepEqual(dnrRules(winLock()), []);
     assert.deepEqual(dnrRules(tabLock({site: null})), []);

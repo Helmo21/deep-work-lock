@@ -7,6 +7,8 @@ const EMPTY = '@as []';
 const WM_KEEP = new Set([
     'close', 'maximize', 'unmaximize', 'toggle-maximized', 'toggle-fullscreen',
     'begin-move', 'begin-resize', 'minimize',
+    // keyboard layout switching is harmless and needed to type
+    'switch-input-source', 'switch-input-source-backward',
 ]);
 
 const SHELL_KEEP = new Set(['screenshot', 'screenshot-window', 'show-screenshot-ui']);

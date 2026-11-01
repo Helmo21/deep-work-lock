@@ -28,11 +28,22 @@ function settingsFor(id) {
     return settingsCache.get(id);
 }
 
+// Writing a key the schema lacks aborts the whole process (g_error), so every
+// write checks the key first. Returns false when the value was not applied.
+function hasKey(schema, key) {
+    return lookupSchema(schema)?.has_key(key) ?? false;
+}
+
 function setFromText(schema, key, text) {
+    if (!hasKey(schema, key))
+        return false;
     try {
-        settingsFor(schema)?.set_value(key, GLib.Variant.parse(null, text, null, null));
+        const type = lookupSchema(schema).get_key(key).get_value_type();
+        settingsFor(schema).set_value(key, GLib.Variant.parse(type, text, null, null));
+        return true;
     } catch (e) {
         console.warn(`[deep-work-lock] cannot set ${schema} ${key}: ${e.message}`);
+        return false;
     }
 }
 
@@ -58,13 +69,13 @@ export function applyPlan(plan = neutralizePlan(installedSchemaKeys())) {
     Gio.Settings.sync();
 }
 
+/** Put saved values back. Keys that no longer exist are skipped. */
 export function restoreSettings(saved) {
     for (const {schema, key, userValue} of saved ?? []) {
-        const settings = settingsFor(schema);
-        if (!settings)
+        if (!hasKey(schema, key))
             continue;
         if (userValue === null)
-            settings.reset(key);
+            settingsFor(schema).reset(key);
         else
             setFromText(schema, key, userValue);
     }

@@ -362,6 +362,13 @@ export class SessionChrome {
             this._overridden.push([name, own, Main.overview[name]]);
             Main.overview[name] = () => this._onBlockedHook?.();
         }
+        // Gestures reach the overview without going through show(). hide()
+        // is a no-op until the overview is fully shown, hence 'shown' too.
+        this._overviewIds = ['showing', 'shown'].map(signal =>
+            Main.overview.connect(signal, () => {
+                Main.overview.hide();
+                this._onBlockedHook?.();
+            }));
     }
 
     leave() {
@@ -383,6 +390,9 @@ export class SessionChrome {
                 delete Main.overview[name];
         }
         this._overridden = [];
+        for (const id of this._overviewIds ?? [])
+            Main.overview.disconnect(id);
+        this._overviewIds = [];
     }
 
     /** Called when something is blocked through the shell UI. */

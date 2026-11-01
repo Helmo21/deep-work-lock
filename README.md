@@ -27,11 +27,12 @@ Pendant la session :
 - les notifications sont coupées ;
 - Super+L reste possible, le temps continue de s'écouler.
 
-Pour un onglet Chrome : nouveaux onglets et fenêtres fermés, retour forcé sur l'onglet, navigation limitée au même site (par exemple `docs.google.com` ↔ `accounts.google.com`), pages `chrome://` bloquées. Les popups ouvertes par l'onglet (connexion) sont autorisées.
+Pour un onglet Chrome : nouveaux onglets et fenêtres fermés, retour forcé sur l'onglet, pages `chrome://` bloquées. La navigation reste sur l'hôte de l'onglet et ses sous-domaines : un verrou sur `docs.google.com` n'ouvre ni `mail.google.com` ni `gemini.google.com`. Seules exceptions : les pages de connexion Google, Microsoft et Apple (`accounts.google.com`, `login.microsoftonline.com`…). Les popups ouvertes par l'onglet (connexion) sont autorisées mais restent sur ces mêmes sites, sinon elles sont fermées.
 
 ## Choix de comportement
 
-- **Cible fermée** : la session continue. Un onglet fermé est rouvert sur sa dernière adresse. Une fenêtre fermée laisse un bureau vide ; une nouvelle fenêtre de la même application devient la cible.
+- **Cible fermée** : la session continue. Un onglet fermé est rouvert sur sa dernière adresse. Une fenêtre fermée laisse un bureau vide ; seule une fenêtre de la même application **ouverte après le verrouillage** peut devenir la nouvelle cible (les autres fenêtres déjà ouvertes restent cachées). Si c'était la dernière fenêtre de Chrome, Chrome se ferme et le bureau reste vide jusqu'à la fin.
+- **Fenêtres Chrome au titre identique** : elles ne proposent pas leurs onglets dans le menu (impossible de savoir laquelle est laquelle) ; elles restent verrouillables comme fenêtres.
 - **Redémarrage de GNOME Shell** : la session reprend avec le temps restant.
 - **Redémarrage de la machine** : la session s'arrête, tous les réglages sont restaurés au démarrage.
 

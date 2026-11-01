@@ -28,4 +28,11 @@ assert(JSON.stringify(wm.get_strv('switch-windows')) === '["<Super>w"]', 'user v
 assert(wm.get_user_value('switch-applications') === null, 'default key reset, not pinned');
 assert(JSON.stringify(wm.get_strv('switch-applications')) === JSON.stringify(defaultSwitchApps), 'default value back');
 assert(mutter.get_string('overlay-key') === 'Super_L', 'overlay key back');
+// a saved entry for a key or schema that no longer exists must be skipped, not abort
+restoreSettings([
+    {schema: 'org.gnome.mutter', key: 'no-such-key', userValue: "'x'"},
+    {schema: 'org.example.missing', key: 'k', userValue: null},
+    {schema: 'org.gnome.mutter', key: 'overlay-key', userValue: "'Super_R'"},
+]);
+assert(mutter.get_string('overlay-key') === 'Super_R', 'valid entries still restored after missing ones');
 print('settings.test.js: all assertions passed');

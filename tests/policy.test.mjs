@@ -69,8 +69,12 @@ test('desktop window is never allowed', () => {
 });
 
 test('window target gone: new same-app normal window allowed', () => {
-    assert.equal(isWindowAllowed(win({id: 'N'}), winTarget, ctx({targetGone: true})), true);
-    assert.equal(isWindowAllowed(win({id: 'N', appId: 'y'}), winTarget, ctx({targetGone: true})), false);
+    assert.equal(isWindowAllowed(win({id: 'N', createdAfterLock: true}), winTarget, ctx({targetGone: true})), true);
+    assert.equal(isWindowAllowed(win({id: 'N', appId: 'y', createdAfterLock: true}), winTarget, ctx({targetGone: true})), false);
+});
+
+test('window target gone: older same-app windows stay locked', () => {
+    assert.equal(isWindowAllowed(win({id: 'O', createdAfterLock: false}), winTarget, ctx({targetGone: true})), false);
 });
 
 test('isWindowAllowed rejects unannounced chrome window', () => {
@@ -97,11 +101,18 @@ test('matchChromeWindows', () => {
     assert.deepEqual([...m].sort(), [['a', 9], ['b', 7]]);
 });
 
-test('matchChromeWindows does not reuse an X11 window', () => {
+test('matchChromeWindows skips ambiguous titles', () => {
     const m = matchChromeWindows(
-        [{id: 'a', title: 'Docs - Google Chrome'}],
+        [{id: 'a', title: 'Docs - Google Chrome'}, {id: 'b', title: 'Docs - Google Chrome'}],
         [{id: 1, activeTitle: 'Docs'}, {id: 2, activeTitle: 'Docs'}]);
-    assert.equal(m.size, 1);
+    assert.equal(m.size, 0);
+});
+
+test('matchChromeWindows: short title is not confused with a longer one', () => {
+    const m = matchChromeWindows(
+        [{id: 'a', title: 'A - B - Google Chrome'}, {id: 'b', title: 'A - Google Chrome'}],
+        [{id: 1, activeTitle: 'A'}, {id: 2, activeTitle: 'A - B'}]);
+    assert.deepEqual([...m].sort(), [['a', 2], ['b', 1]]);
 });
 
 test('decideStartup', () => {

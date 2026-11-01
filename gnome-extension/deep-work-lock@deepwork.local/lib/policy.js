@@ -57,7 +57,9 @@ export function isWindowAllowed(win, target, ctx) {
     case 'window':
         if (sameApp && DIALOG_TYPES.has(win.type))
             return true;
-        return sameApp && ctx.targetGone;
+        // Only a window opened after the lock may replace a closed target;
+        // otherwise closing the target would reveal the app's other windows.
+        return sameApp && ctx.targetGone && win.createdAfterLock;
     case 'tab':
         // New Chrome windows are only let through when the Chrome extension
         // vouches for them (auth popups, the reopened locked tab).
@@ -76,19 +78,25 @@ export function isWindowAllowed(win, target, ctx) {
  * @returns {Map<string, number>} X11 window id -> Chrome window id
  */
 export function matchChromeWindows(xwins, cwins) {
+    // Titles shared by several Chrome windows cannot be told apart: skip them
+    // rather than risk locking the wrong window.
+    const titleCount = new Map();
+    for (const cw of cwins)
+        titleCount.set(cw.activeTitle, (titleCount.get(cw.activeTitle) ?? 0) + 1);
+
     const result = new Map();
-    const claimed = new Set();
-    const sorted = [...cwins].sort((a, b) => b.activeTitle.length - a.activeTitle.length);
-    for (const cw of sorted) {
+    for (const cw of cwins) {
+        if (titleCount.get(cw.activeTitle) !== 1)
+            continue;
         const prefix = `${cw.activeTitle} - `;
         const candidates = xwins.filter(xw =>
-            !claimed.has(xw.id) &&
-            xw.title.startsWith(prefix) &&
-            xw.title.includes('Google Chrome'));
-        if (candidates.length === 0)
-            continue;
-        claimed.add(candidates[0].id);
-        result.set(candidates[0].id, cw.id);
+            xw.title.startsWith(prefix) && xw.title.includes('Google Chrome'));
+        // A longer title can also start with this prefix ("A - B - Google Chrome").
+        const exact = candidates.filter(xw => !cwins.some(other =>
+            other !== cw && other.activeTitle.length > cw.activeTitle.length &&
+            xw.title.startsWith(`${other.activeTitle} - `)));
+        if (exact.length === 1)
+            result.set(exact[0].id, cw.id);
     }
     return result;
 }
