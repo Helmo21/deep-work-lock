@@ -32,6 +32,11 @@ gnome-extensions disable "$UUID" 2>/dev/null || true
 rm -rf "$HOME/.local/share/gnome-shell/extensions/$UUID"
 rm -rf "$HOME/.local/share/deep-work-lock"
 rm -f "$HOME/.config/google-chrome/NativeMessagingHosts/org.deepworklock.host.json"
+rm -f "$HOME/.mozilla/native-messaging-hosts/org.deepworklock.host.json"
+gdbus call --session --dest org.freedesktop.impl.portal.PermissionStore \
+    --object-path /org/freedesktop/impl/portal/PermissionStore \
+    --method org.freedesktop.impl.portal.PermissionStore.DeletePermission \
+    webextensions org.deepworklock.host snap.firefox >/dev/null 2>&1 || true
 rm -rf "$(dirname "$STATE_FILE")"
 
-echo "Deep Work Lock est désinstallé. Retire aussi l'extension dans chrome://extensions."
+echo "Deep Work Lock est désinstallé. Retire aussi l'extension dans chrome://extensions et dans about:addons (Firefox)."
