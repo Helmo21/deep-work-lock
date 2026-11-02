@@ -159,7 +159,7 @@ async function recover(fromShell) {
     let next;
     switch (decision.action) {
     case 'keep':
-        next = fromShell;
+        next = {...fromShell, windowId: decision.windowId};
         break;
     case 'adopt':
         next = {...fromShell, tabId: decision.tabId, windowId: decision.windowId};
@@ -184,8 +184,12 @@ async function recover(fromShell) {
     if (next.kind === 'tab')
         await chrome.tabs.update(next.tabId, {active: true}).catch(ignore);
     await chrome.windows.update(next.windowId, {focused: true}).catch(ignore);
-    // GNOME hides browser windows it was not told about.
-    send({type: 'expectWindow', reason: 'relocated', bounds: await windowBounds(next.windowId)});
+    // GNOME hides browser windows it was not told about. The active tab title
+    // tells restored windows of the same size apart; let the X11 title catch up.
+    await sleep(500);
+    const active = (await chrome.tabs.query({windowId: next.windowId, active: true}).catch(() => []))[0];
+    send({type: 'expectWindow', reason: 'relocated', bounds: await windowBounds(next.windowId),
+        title: active?.title ?? null});
 }
 
 function windowBounds(windowId) {

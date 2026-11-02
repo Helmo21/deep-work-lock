@@ -115,7 +115,13 @@ test('shellLockFor', () => {
 
 test('decideRecovery: tab still there', () => {
     const tabs = [{id: 5, windowId: 2, url: 'https://docs.google.com/d/9', active: true}];
-    assert.deepEqual(decideRecovery(tabLock(), tabs, [2]), {action: 'keep'});
+    assert.deepEqual(decideRecovery(tabLock(), tabs, [2]), {action: 'keep', windowId: 2});
+});
+
+test('decideRecovery: keep follows the tab into its current window', () => {
+    // after a restart, id 5 may be another same-site tab in another window
+    const tabs = [{id: 5, windowId: 1, url: 'https://docs.google.com/x', active: true}];
+    assert.deepEqual(decideRecovery(tabLock(), tabs, [1]), {action: 'keep', windowId: 1});
 });
 
 test('decideRecovery: adopts a restored tab, exact URL first', () => {
@@ -139,7 +145,7 @@ test('decideRecovery: reopens when nothing matches', () => {
 });
 
 test('decideRecovery: window lock', () => {
-    assert.deepEqual(decideRecovery(winLock(), [], [2, 3]), {action: 'keep'});
+    assert.deepEqual(decideRecovery(winLock(), [], [2, 3]), {action: 'keep', windowId: 2});
     assert.deepEqual(decideRecovery(winLock(), [], [7]), {action: 'adopt-window', windowId: 7});
     assert.deepEqual(decideRecovery(winLock(), [], []), {action: 'none'});
     assert.deepEqual(decideRecovery(null, [], []), {action: 'none'});

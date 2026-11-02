@@ -130,9 +130,9 @@ export function matchBrowserWindows(xwins, bwins, browser) {
     return result;
 }
 
-// An announcement without bounds only frees a window opened just before it.
-// With bounds it may free an older one: a restarting browser can take a while
-// to bring its extension and native host up.
+// An announcement only frees a window opened just before it, except a
+// relocation with bounds: a restarting browser can take a while to bring its
+// extension and native host up.
 export const ANNOUNCE_WINDOW_MS = 3000;
 export const RECOVERY_WINDOW_MS = 60000;
 export const BOUNDS_TOLERANCE_PX = 60;
@@ -149,17 +149,25 @@ export function boundsMatch(rect, bounds) {
 
 /**
  * Which hidden window an announcement vouches for.
- * @param candidates [{browser, time, rect}] oldest first
+ * @param candidates [{browser, time, rect, title}] oldest first
+ * @param detail {browser, reason, bounds, title?} title = active tab title
  * @returns index of the newest matching candidate, or -1
  */
-export function pickAnnounced(candidates, {browser, bounds}, nowMs) {
-    const maxAge = bounds ? RECOVERY_WINDOW_MS : ANNOUNCE_WINDOW_MS;
-    for (let i = candidates.length - 1; i >= 0; i--) {
-        const c = candidates[i];
-        if (c.browser === browser && nowMs - c.time < maxAge && boundsMatch(c.rect, bounds))
-            return i;
-    }
-    return -1;
+export function pickAnnounced(candidates, {browser, reason, bounds, title = null}, nowMs) {
+    const late = reason === 'relocated' && !!bounds;
+    const maxAge = late ? RECOVERY_WINDOW_MS : ANNOUNCE_WINDOW_MS;
+    const sep = BROWSERS[browser]?.titleSeparator;
+    const matches = [];
+    candidates.forEach((c, i) => {
+        if (c.browser === browser && nowMs - c.time < maxAge && boundsMatch(c.rect, bounds) &&
+            (title === null || (c.title ?? '').startsWith(`${title}${sep}`)))
+            matches.push(i);
+    });
+    // A restored session can bring back several windows of the same size:
+    // freeing the wrong one would hand over a window outside the lock.
+    if (matches.length > 1 && matches.some(i => nowMs - candidates[i].time >= ANNOUNCE_WINDOW_MS))
+        return -1;
+    return matches.length ? matches[matches.length - 1] : -1;
 }
 
 /** Window announcement from a native host: JSON {browser, reason, bounds} or a bare reason. */
@@ -169,11 +177,12 @@ export function parseExpect(detail, defaultBrowser = 'chrome') {
         parsed = JSON.parse(detail);
     } catch {}
     if (!parsed || typeof parsed !== 'object')
-        return {browser: defaultBrowser, reason: String(detail), bounds: null};
+        return {browser: defaultBrowser, reason: String(detail), bounds: null, title: null};
     return {
         browser: Object.hasOwn(BROWSERS, parsed.browser) ? parsed.browser : defaultBrowser,
         reason: parsed.reason ?? 'popup',
         bounds: parsed.bounds ?? null,
+        title: typeof parsed.title === 'string' ? parsed.title : null,
     };
 }
 

@@ -153,12 +153,14 @@ export class WindowGuard {
      * A browser extension vouches for a window of its browser.
      * @param detail {browser, reason: 'popup'|'relocated', bounds: {left, top, width, height}|null}
      */
-    expectWindow({browser, reason, bounds}) {
+    expectWindow({browser, reason, bounds, title = null}) {
         if (!this._active)
             return;
         this._prunePending();
-        const candidates = this._pending.map(p => ({browser: p.browser, time: p.time, rect: frameRect(p.win)}));
-        const index = pickAnnounced(candidates, {browser, bounds}, Date.now());
+        const candidates = this._pending.map(p => ({
+            browser: p.browser, time: p.time, rect: frameRect(p.win), title: p.win.get_title() ?? '',
+        }));
+        const index = pickAnnounced(candidates, {browser, reason, bounds, title}, Date.now());
         if (index >= 0) {
             const match = this._pending[index];
             this._dropPending(match);

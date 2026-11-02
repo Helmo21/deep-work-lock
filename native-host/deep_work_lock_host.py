@@ -55,8 +55,16 @@ def bridge_xml(name):
 
 
 def expect_window_detail(browser, message):
+    title = message.get("title")
     return {"browser": browser, "reason": str(message.get("reason", "popup")),
-            "bounds": message.get("bounds")}
+            "bounds": message.get("bounds"), "title": title if isinstance(title, str) else None}
+
+
+def legacy_expect_method(browser, error_message):
+    """A version 1 GNOME extension only has ExpectChromeWindow."""
+    if browser == "chrome" and "UnknownMethod" in error_message:
+        return "ExpectChromeWindow"
+    return None
 
 
 def log(*args):
@@ -163,7 +171,13 @@ class Bridge:
         elif kind == "expectWindow":
             detail = expect_window_detail(self.browser, message)
             arg = self.GLib.Variant("(s)", (json.dumps(detail),))
-            self.call_shell("ExpectWindow", arg, None)
+
+            def fallback(error_message):
+                legacy = legacy_expect_method(self.browser, error_message)
+                if legacy:
+                    self.call_shell(legacy, arg, None)
+
+            self.call_shell("ExpectWindow", arg, None, on_error=fallback)
         elif kind == "hello":
             log(f"{BROWSER_NAMES[self.browser]} extension connected")
 
@@ -177,7 +191,7 @@ class Bridge:
         self.send({"type": "lockState", "data": data})
 
     # ---- D-Bus side --------------------------------------------------
-    def call_shell(self, method, args, callback):
+    def call_shell(self, method, args, callback, on_error=None):
         if self.connection is None:
             if callback:
                 callback(None)
@@ -189,6 +203,8 @@ class Bridge:
             except self.GLib.Error as error:
                 log(f"Shell.{method} failed: {error.message}")
                 result = None
+                if on_error:
+                    on_error(error.message)
             if callback:
                 callback(result)
 

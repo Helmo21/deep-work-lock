@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from deep_work_lock_host import (  # noqa: E402
     BRIDGES, FrameReader, PendingRequests, bridge_xml, detect_browser, encode_message,
-    expect_window_detail,
+    expect_window_detail, legacy_expect_method,
 )
 
 
@@ -78,9 +78,20 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(
             expect_window_detail("firefox", {"type": "expectWindow", "reason": "relocated",
                                              "bounds": {"left": 1}}),
-            {"browser": "firefox", "reason": "relocated", "bounds": {"left": 1}})
+            {"browser": "firefox", "reason": "relocated", "bounds": {"left": 1}, "title": None})
         self.assertEqual(expect_window_detail("chrome", {}),
-                         {"browser": "chrome", "reason": "popup", "bounds": None})
+                         {"browser": "chrome", "reason": "popup", "bounds": None, "title": None})
+
+
+    def test_expect_detail_title(self):
+        self.assertEqual(expect_window_detail("firefox", {"title": "Docs"})["title"], "Docs")
+        self.assertIsNone(expect_window_detail("firefox", {})["title"])
+
+    def test_legacy_fallback(self):
+        unknown = "GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: No such method 'ExpectWindow'"
+        self.assertEqual(legacy_expect_method("chrome", unknown), "ExpectChromeWindow")
+        self.assertIsNone(legacy_expect_method("firefox", unknown))
+        self.assertIsNone(legacy_expect_method("chrome", "Timeout was reached"))
 
 
 if __name__ == "__main__":

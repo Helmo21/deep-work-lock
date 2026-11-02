@@ -183,8 +183,8 @@ test('pickAnnounced accepts a late announcement with bounds', () => {
     const r = {x: 140, y: 109, width: 1332, height: 1092};
     const c = [{browser: 'firefox', time: 0, rect: r}];
     assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: null}, 5000), -1);
-    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: {left: 150, top: 100, width: 1340, height: 1080}}, 30000), 0);
-    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: {left: 140, top: 109, width: 1332, height: 1092}}, 61000), -1);
+    assert.equal(pickAnnounced(c, {browser: 'firefox', reason: 'relocated', bounds: {left: 150, top: 100, width: 1340, height: 1080}}, 30000), 0);
+    assert.equal(pickAnnounced(c, {browser: 'firefox', reason: 'relocated', bounds: {left: 140, top: 109, width: 1332, height: 1092}}, 61000), -1);
 });
 
 test('pickAnnounced ignores other browsers', () => {
@@ -194,9 +194,9 @@ test('pickAnnounced ignores other browsers', () => {
 
 test('parseExpect', () => {
     assert.deepEqual(parseExpect('{"browser":"firefox","reason":"relocated","bounds":null}'),
-        {browser: 'firefox', reason: 'relocated', bounds: null});
-    assert.deepEqual(parseExpect('{"reason":"popup"}'), {browser: 'chrome', reason: 'popup', bounds: null});
-    assert.deepEqual(parseExpect('popup'), {browser: 'chrome', reason: 'popup', bounds: null});
+        {browser: 'firefox', reason: 'relocated', bounds: null, title: null});
+    assert.deepEqual(parseExpect('{"reason":"popup"}'), {browser: 'chrome', reason: 'popup', bounds: null, title: null});
+    assert.deepEqual(parseExpect('popup'), {browser: 'chrome', reason: 'popup', bounds: null, title: null});
     assert.equal(parseExpect('{"browser":"opera"}').browser, 'chrome');
 });
 
@@ -222,4 +222,34 @@ test('decideStartup', () => {
     assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, 'B1', 500), 'resume');
     assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, 'B1', 1500), 'restore');
     assert.equal(decideStartup({bootId: 'B0', endsAt: 1000}, 'B1', 500), 'restore');
+});
+
+test('pickAnnounced refuses an ambiguous late announcement', () => {
+    const r = {x: 0, y: 0, width: 1920, height: 1080};
+    const c = [{browser: 'firefox', time: 0, rect: r, title: 'Docs — Mozilla Firefox'},
+        {browser: 'firefox', time: 100, rect: r, title: 'News — Mozilla Firefox'}];
+    const b = {left: 0, top: 0, width: 1920, height: 1080};
+    assert.equal(pickAnnounced(c, {browser: 'firefox', reason: 'relocated', bounds: b}, 10000), -1);
+    // the active tab title tells them apart
+    assert.equal(pickAnnounced(c, {browser: 'firefox', reason: 'relocated', bounds: b, title: 'Docs'}, 10000), 0);
+    assert.equal(pickAnnounced(c, {browser: 'firefox', reason: 'relocated', bounds: b, title: 'Mail'}, 10000), -1);
+});
+
+test('pickAnnounced: only a relocation may free an older window', () => {
+    const r = {x: 0, y: 0, width: 800, height: 600};
+    const c = [{browser: 'chrome', time: 0, rect: r, title: 'DevTools'}];
+    const b = {left: 0, top: 0, width: 800, height: 600};
+    assert.equal(pickAnnounced(c, {browser: 'chrome', reason: 'popup', bounds: b}, 10000), -1);
+    assert.equal(pickAnnounced(c, {browser: 'chrome', reason: 'relocated', bounds: b}, 10000), 0);
+});
+
+test('pickAnnounced: fresh popups still pick the newest', () => {
+    const r = {x: 0, y: 0, width: 500, height: 600};
+    const c = [{browser: 'chrome', time: 0, rect: r, title: 'a'}, {browser: 'chrome', time: 500, rect: r, title: 'b'}];
+    assert.equal(pickAnnounced(c, {browser: 'chrome', reason: 'popup', bounds: {left: 0, top: 0, width: 500, height: 600}}, 1000), 1);
+});
+
+test('parseExpect keeps the title', () => {
+    assert.equal(parseExpect('{"browser":"firefox","reason":"relocated","bounds":null,"title":"Docs"}').title, 'Docs');
+    assert.equal(parseExpect('popup').title, null);
 });

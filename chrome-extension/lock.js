@@ -158,13 +158,13 @@ export function decideRecovery(lock, tabs, windowIds) {
         return {action: 'none'};
     if (lock.kind === 'window') {
         if (windowIds.includes(lock.windowId))
-            return {action: 'keep'};
+            return {action: 'keep', windowId: lock.windowId};
         return windowIds.length ? {action: 'adopt-window', windowId: windowIds[0]} : {action: 'none'};
     }
     const sameSite = t => !!lock.site && siteOf(t.url) === lock.site;
     const same = tabs.find(t => t.id === lock.tabId);
     if (same && ((lock.lastUrl && same.url === lock.lastUrl) || sameSite(same)))
-        return {action: 'keep'};
+        return {action: 'keep', windowId: same.windowId};
     const activeFirst = [...tabs].sort((a, b) => Number(b.active) - Number(a.active));
     const found = activeFirst.find(t => lock.lastUrl && t.url === lock.lastUrl) ?? activeFirst.find(sameSite);
     if (found)
