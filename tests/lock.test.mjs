@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     siteOf, isInternalUrl, decideNewTab, decideNewWindow, decideNavigation,
     decidePopupNavigation, decideTabRemoved, decideTabAttached, dnrRules, restoreLock,
-    IDENTITY_HOSTS,
+    IDENTITY_HOSTS, shellLockFor, decideRecovery,
 } from '../chrome-extension/lock.js';
 
 const tabLock = o => ({kind: 'tab', tabId: 5, windowId: 2, site: 'docs.google.com',
@@ -102,4 +102,45 @@ test('restoreLock prefers storage then shell', () => {
     assert.equal(restoreLock(null, b, 1000), b);
     assert.equal(restoreLock(a, b, 20_000), null);
     assert.equal(restoreLock(null, null, 1000), null);
+});
+
+test('shellLockFor', () => {
+    const l = {kind: 'tab'};
+    assert.equal(shellLockFor('firefox', {active: true, browser: 'firefox', lock: l}), l);
+    assert.equal(shellLockFor('chrome', {active: true, browser: 'firefox', lock: l}), null);
+    assert.equal(shellLockFor('chrome', {active: true, chrome: l}), l); // V1 shell
+    assert.equal(shellLockFor('firefox', {active: true, chrome: l}), null);
+    assert.equal(shellLockFor('chrome', null), null);
+});
+
+test('decideRecovery: tab still there', () => {
+    const tabs = [{id: 5, windowId: 2, url: 'https://docs.google.com/d/9', active: true}];
+    assert.deepEqual(decideRecovery(tabLock(), tabs, [2]), {action: 'keep'});
+});
+
+test('decideRecovery: adopts a restored tab, exact URL first', () => {
+    const tabs = [{id: 1, windowId: 1, url: 'https://docs.google.com/other', active: true},
+        {id: 3, windowId: 4, url: 'https://docs.google.com/d/1', active: false},
+        {id: 5, windowId: 4, url: 'https://news.com', active: false}];
+    assert.deepEqual(decideRecovery(tabLock(), tabs, [1, 4]), {action: 'adopt', tabId: 3, windowId: 4});
+    assert.deepEqual(decideRecovery(tabLock(), tabs.slice(0, 1), [1]), {action: 'adopt', tabId: 1, windowId: 1});
+});
+
+test('decideRecovery: same site prefers the active tab', () => {
+    const tabs = [{id: 1, windowId: 1, url: 'https://docs.google.com/a', active: false},
+        {id: 2, windowId: 1, url: 'https://docs.google.com/b', active: true}];
+    assert.deepEqual(decideRecovery(tabLock(), tabs, [1]), {action: 'adopt', tabId: 2, windowId: 1});
+});
+
+test('decideRecovery: reopens when nothing matches', () => {
+    assert.deepEqual(decideRecovery(tabLock(), [{id: 5, windowId: 2, url: 'https://news.com', active: true}], [2]),
+        {action: 'reopen', url: 'https://docs.google.com/d/1'});
+    assert.deepEqual(decideRecovery(tabLock({lastUrl: null, site: null}), [], []), {action: 'none'});
+});
+
+test('decideRecovery: window lock', () => {
+    assert.deepEqual(decideRecovery(winLock(), [], [2, 3]), {action: 'keep'});
+    assert.deepEqual(decideRecovery(winLock(), [], [7]), {action: 'adopt-window', windowId: 7});
+    assert.deepEqual(decideRecovery(winLock(), [], []), {action: 'none'});
+    assert.deepEqual(decideRecovery(null, [], []), {action: 'none'});
 });

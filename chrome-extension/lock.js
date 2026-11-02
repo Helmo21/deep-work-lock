@@ -134,3 +134,40 @@ export function restoreLock(fromStorage, fromShell, nowMs) {
         return null;
     return lock;
 }
+
+/**
+ * The lock GNOME holds for this browser. A version 1 Shell only knew Chrome
+ * and sent it as `chrome`.
+ */
+export function shellLockFor(browser, shellData) {
+    if (!shellData)
+        return null;
+    if (shellData.browser === undefined)
+        return browser === 'chrome' ? shellData.chrome ?? null : null;
+    return shellData.browser === browser ? shellData.lock ?? null : null;
+}
+
+/**
+ * The browser restarted (or the extension reloaded): tab and window ids from
+ * the lock may be stale. Find the locked tab again, or reopen it.
+ *
+ * @param tabs [{id, windowId, url, active}]  @param windowIds ids of normal windows
+ */
+export function decideRecovery(lock, tabs, windowIds) {
+    if (!lock)
+        return {action: 'none'};
+    if (lock.kind === 'window') {
+        if (windowIds.includes(lock.windowId))
+            return {action: 'keep'};
+        return windowIds.length ? {action: 'adopt-window', windowId: windowIds[0]} : {action: 'none'};
+    }
+    const sameSite = t => !!lock.site && siteOf(t.url) === lock.site;
+    const same = tabs.find(t => t.id === lock.tabId);
+    if (same && ((lock.lastUrl && same.url === lock.lastUrl) || sameSite(same)))
+        return {action: 'keep'};
+    const activeFirst = [...tabs].sort((a, b) => Number(b.active) - Number(a.active));
+    const found = activeFirst.find(t => lock.lastUrl && t.url === lock.lastUrl) ?? activeFirst.find(sameSite);
+    if (found)
+        return {action: 'adopt', tabId: found.id, windowId: found.windowId};
+    return lock.lastUrl ? {action: 'reopen', url: lock.lastUrl} : {action: 'none'};
+}

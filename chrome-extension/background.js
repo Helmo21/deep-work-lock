@@ -1,12 +1,14 @@
-// Service worker: applies the tab lock ordered by the GNOME extension through
-// the native messaging host. Decisions live in lock.js.
+// Background script (Chrome service worker, Firefox event page): applies the
+// tab lock ordered by the GNOME extension through the native messaging host.
+// Decisions live in lock.js.
 
 import {
     siteOf, decideNewTab, decideNewWindow, decideNavigation, decidePopupNavigation,
-    decideTabRemoved, decideTabAttached, dnrRules, restoreLock,
+    decideTabRemoved, decideTabAttached, dnrRules, restoreLock, shellLockFor, decideRecovery,
 } from './lock.js';
 
 const HOST = 'org.deepworklock.host';
+const BROWSER = chrome.runtime.getURL('').startsWith('moz-extension:') ? 'firefox' : 'chrome';
 const STORAGE_KEY = 'lock';
 
 let lock = null;
@@ -90,9 +92,11 @@ async function onHostMessage(message) {
                 await clearLock();
             return;
         }
-        const restored = restoreLock(lock, shell.chrome ?? null, Date.now());
-        if (restored && restored !== lock)
-            await saveLock(restored);
+        if (lock)
+            return; // our own storage is authoritative while the browser runs
+        const restored = restoreLock(null, shellLockFor(BROWSER, shell), Date.now());
+        if (restored)
+            await recover(restored);
         return;
     }
     if (message.id === undefined)
@@ -144,6 +148,52 @@ async function lockFromRequest({kind, tabId, windowId, endsAt}) {
     return lock;
 }
 
+/**
+ * The lock came from GNOME, not from our storage: the browser restarted (or
+ * the extension reloaded), so tab and window ids may be stale.
+ */
+async function recover(fromShell) {
+    const tabs = await chrome.tabs.query({});
+    const windows = await chrome.windows.getAll({windowTypes: ['normal']});
+    const decision = decideRecovery(fromShell, tabs, windows.map(w => w.id));
+    let next;
+    switch (decision.action) {
+    case 'keep':
+        next = fromShell;
+        break;
+    case 'adopt':
+        next = {...fromShell, tabId: decision.tabId, windowId: decision.windowId};
+        break;
+    case 'adopt-window':
+        next = {...fromShell, windowId: decision.windowId};
+        break;
+    case 'reopen': {
+        ownTabCreations++;
+        try {
+            const win = await chrome.windows.create({url: decision.url, focused: true});
+            next = {...fromShell, tabId: win.tabs[0].id, windowId: win.id};
+        } finally {
+            ownTabCreations--;
+        }
+        break;
+    }
+    default:
+        return;
+    }
+    await saveLock({...next, popupTabs: [], popupWindows: []});
+    if (next.kind === 'tab')
+        await chrome.tabs.update(next.tabId, {active: true}).catch(ignore);
+    await chrome.windows.update(next.windowId, {focused: true}).catch(ignore);
+    // GNOME hides browser windows it was not told about.
+    send({type: 'expectWindow', reason: 'relocated', bounds: await windowBounds(next.windowId)});
+}
+
+function windowBounds(windowId) {
+    return chrome.windows.get(windowId)
+        .then(w => ({left: w.left, top: w.top, width: w.width, height: w.height}))
+        .catch(() => null);
+}
+
 // ---- enforcement --------------------------------------------------------
 
 async function revertTab(tabId) {
@@ -169,7 +219,9 @@ chrome.tabs.onCreated.addListener(async tab => {
         await chrome.tabs.remove(tab.id).catch(ignore);
 });
 
-chrome.windows.onCreated.addListener(async win => {
+async function onWindowCreated(win) {
+    if (win.type !== 'normal' && win.type !== 'popup')
+        return;
     const l = await current();
     if (!l || ownTabCreations > 0)
         return;
@@ -197,13 +249,17 @@ chrome.windows.onCreated.addListener(async win => {
     await saveLock({...fresh,
         popupWindows: [...(fresh.popupWindows ?? []), win.id],
         popupTabs: [...(fresh.popupTabs ?? []), ...tabs.map(t => t.id)]});
-    const bounds = await chrome.windows.get(win.id)
-        .then(w => ({left: w.left, top: w.top, width: w.width, height: w.height}))
-        .catch(() => null);
-    send({type: 'expectWindow', reason: 'popup', bounds});
+    send({type: 'expectWindow', reason: 'popup', bounds: await windowBounds(win.id)});
     if (first?.url)
         await checkPopupNavigation(first.id, first.url, win.id);
-}, {windowTypes: ['normal', 'popup']});
+}
+
+// Firefox rejects the windowTypes filter.
+try {
+    chrome.windows.onCreated.addListener(onWindowCreated, {windowTypes: ['normal', 'popup']});
+} catch {
+    chrome.windows.onCreated.addListener(onWindowCreated);
+}
 
 chrome.windows.onRemoved.addListener(async id => {
     const l = await current();
@@ -301,7 +357,7 @@ chrome.tabs.onAttached.addListener(async (tabId, {newWindowId}) => {
     }
 });
 
-// The worker only starts on a listened event: these wake it when Chrome
+// The background only starts on a listened event: these wake it when the browser
 // starts or the extension is (re)enabled, so the host connects right away.
 chrome.runtime.onStartup.addListener(ignore);
 chrome.runtime.onInstalled.addListener(ignore);
