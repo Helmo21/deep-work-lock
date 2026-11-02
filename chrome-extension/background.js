@@ -301,4 +301,9 @@ chrome.tabs.onAttached.addListener(async (tabId, {newWindowId}) => {
     }
 });
 
+// The worker only starts on a listened event: these wake it when Chrome
+// starts or the extension is (re)enabled, so the host connects right away.
+chrome.runtime.onStartup.addListener(ignore);
+chrome.runtime.onInstalled.addListener(ignore);
+
 connect();
