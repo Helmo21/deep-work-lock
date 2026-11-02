@@ -30,9 +30,33 @@ export function lockMessage(ms) {
 const DIALOG_TYPES = new Set(['dialog', 'modal_dialog', 'utility', 'splash']);
 
 /**
+ * Browsers whose tabs can be locked. The title separator and suffix pair an
+ * X11 window with a browser window: "<active tab title><sep>...<suffix>".
+ */
+export const BROWSERS = {
+    chrome: {
+        id: 'chrome', name: 'Chrome', wmClass: /google-chrome/i,
+        titleSeparator: ' - ', titleSuffix: 'Google Chrome',
+        bridgeName: 'org.deepworklock.ChromeBridge', bridgePath: '/org/deepworklock/ChromeBridge',
+        icon: 'google-chrome',
+    },
+    firefox: {
+        id: 'firefox', name: 'Firefox', wmClass: /firefox/i,
+        titleSeparator: ' \u2014 ', titleSuffix: 'Mozilla Firefox',
+        bridgeName: 'org.deepworklock.FirefoxBridge', bridgePath: '/org/deepworklock/FirefoxBridge',
+        icon: 'firefox',
+    },
+};
+
+export function browserOfWmClass(wmClass, wmClassInstance) {
+    const text = `${wmClass ?? ''} ${wmClassInstance ?? ''}`;
+    return Object.values(BROWSERS).find(b => b.wmClass.test(text))?.id ?? null;
+}
+
+/**
  * Decide whether a window may stay visible and focused during a session.
  *
- * @param {object} win     {id, appId, type, overrideRedirect, transientChain, isChrome, createdAfterLock}
+ * @param {object} win     {id, appId, type, overrideRedirect, transientChain, browser, createdAfterLock}
  * @param {object} target  {kind: 'window'|'app'|'tab', windowId, appId}
  * @param {object} ctx     {targetGone, announcedIds: Set}
  */
@@ -45,7 +69,7 @@ export function isWindowAllowed(win, target, ctx) {
         return true;
     if (target.windowId && win.transientChain.includes(target.windowId))
         return true;
-    // Chrome windows the Chrome extension vouched for (auth popups).
+    // Browser windows the browser extension vouched for (auth popups).
     if (ctx.announcedIds.has(win.id))
         return true;
 
@@ -57,14 +81,19 @@ export function isWindowAllowed(win, target, ctx) {
     case 'window':
         if (sameApp && DIALOG_TYPES.has(win.type))
             return true;
+        // A new browser window only replaces the target when its extension
+        // announced it: a browser restarted without the extension (safe
+        // mode) must not get through.
+        if (win.browser)
+            return false;
         // Only a window opened after the lock may replace a closed target;
         // otherwise closing the target would reveal the app's other windows.
         return sameApp && ctx.targetGone && win.createdAfterLock;
     case 'tab':
-        // New Chrome windows are only let through when the Chrome extension
+        // New browser windows are only let through when the extension
         // vouches for them (auth popups, the reopened locked tab).
-        if (win.isChrome && win.createdAfterLock)
-            return ctx.announcedIds.has(win.id);
+        if (win.browser && win.createdAfterLock)
+            return false;
         return sameApp && DIALOG_TYPES.has(win.type);
     default:
         return false;
@@ -72,33 +101,95 @@ export function isWindowAllowed(win, target, ctx) {
 }
 
 /**
- * Pair X11 Chrome windows with Chrome window ids using the title, which X11
- * shows as "<active tab title> - Google Chrome".
+ * Pair X11 browser windows with browser window ids using the title, which
+ * X11 shows as "<active tab title><separator><suffix>".
  *
- * @returns {Map<string, number>} X11 window id -> Chrome window id
+ * @returns {Map<string, number>} X11 window id -> browser window id
  */
-export function matchChromeWindows(xwins, cwins) {
-    // Titles shared by several Chrome windows cannot be told apart: skip them
+export function matchBrowserWindows(xwins, bwins, browser) {
+    const {titleSeparator: sep, titleSuffix: suffix} = BROWSERS[browser];
+    // Titles shared by several windows cannot be told apart: skip them
     // rather than risk locking the wrong window.
     const titleCount = new Map();
-    for (const cw of cwins)
-        titleCount.set(cw.activeTitle, (titleCount.get(cw.activeTitle) ?? 0) + 1);
+    for (const bw of bwins)
+        titleCount.set(bw.activeTitle, (titleCount.get(bw.activeTitle) ?? 0) + 1);
 
     const result = new Map();
-    for (const cw of cwins) {
-        if (titleCount.get(cw.activeTitle) !== 1)
+    for (const bw of bwins) {
+        if (titleCount.get(bw.activeTitle) !== 1)
             continue;
-        const prefix = `${cw.activeTitle} - `;
-        const candidates = xwins.filter(xw =>
-            xw.title.startsWith(prefix) && xw.title.includes('Google Chrome'));
+        const prefix = `${bw.activeTitle}${sep}`;
+        const candidates = xwins.filter(xw => xw.title.startsWith(prefix) && xw.title.includes(suffix));
         // A longer title can also start with this prefix ("A - B - Google Chrome").
-        const exact = candidates.filter(xw => !cwins.some(other =>
-            other !== cw && other.activeTitle.length > cw.activeTitle.length &&
-            xw.title.startsWith(`${other.activeTitle} - `)));
+        const exact = candidates.filter(xw => !bwins.some(other =>
+            other !== bw && other.activeTitle.length > bw.activeTitle.length &&
+            xw.title.startsWith(`${other.activeTitle}${sep}`)));
         if (exact.length === 1)
-            result.set(exact[0].id, cw.id);
+            result.set(exact[0].id, bw.id);
     }
     return result;
+}
+
+// An announcement without bounds only frees a window opened just before it.
+// With bounds it may free an older one: a restarting browser can take a while
+// to bring its extension and native host up.
+export const ANNOUNCE_WINDOW_MS = 3000;
+export const RECOVERY_WINDOW_MS = 60000;
+export const BOUNDS_TOLERANCE_PX = 60;
+
+/** @param rect {x, y, width, height}  @param bounds {left, top, width, height}|null */
+export function boundsMatch(rect, bounds) {
+    if (!bounds)
+        return true;
+    return Math.abs(rect.x - bounds.left) <= BOUNDS_TOLERANCE_PX &&
+        Math.abs(rect.y - bounds.top) <= BOUNDS_TOLERANCE_PX &&
+        Math.abs(rect.width - bounds.width) <= BOUNDS_TOLERANCE_PX &&
+        Math.abs(rect.height - bounds.height) <= BOUNDS_TOLERANCE_PX;
+}
+
+/**
+ * Which hidden window an announcement vouches for.
+ * @param candidates [{browser, time, rect}] oldest first
+ * @returns index of the newest matching candidate, or -1
+ */
+export function pickAnnounced(candidates, {browser, bounds}, nowMs) {
+    const maxAge = bounds ? RECOVERY_WINDOW_MS : ANNOUNCE_WINDOW_MS;
+    for (let i = candidates.length - 1; i >= 0; i--) {
+        const c = candidates[i];
+        if (c.browser === browser && nowMs - c.time < maxAge && boundsMatch(c.rect, bounds))
+            return i;
+    }
+    return -1;
+}
+
+/** Window announcement from a native host: JSON {browser, reason, bounds} or a bare reason. */
+export function parseExpect(detail, defaultBrowser = 'chrome') {
+    let parsed = null;
+    try {
+        parsed = JSON.parse(detail);
+    } catch {}
+    if (!parsed || typeof parsed !== 'object')
+        return {browser: defaultBrowser, reason: String(detail), bounds: null};
+    return {
+        browser: Object.hasOwn(BROWSERS, parsed.browser) ? parsed.browser : defaultBrowser,
+        reason: parsed.reason ?? 'popup',
+        bounds: parsed.bounds ?? null,
+    };
+}
+
+/** Session files written by version 1 only knew Chrome. */
+export function upgradeState(state) {
+    if (!state || state.version >= 2)
+        return state;
+    const {chrome = null, ...rest} = state;
+    const {chromeWindowId = null, ...target} = state.target ?? {};
+    const isChrome = (target.tabId ?? null) !== null || chromeWindowId !== null;
+    return {
+        ...rest,
+        version: 2,
+        target: {...target, browser: isChrome ? 'chrome' : null, browserWindowId: chromeWindowId},
+        browserLock: chrome,
+    };
 }
 
 /**

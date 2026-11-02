@@ -2,11 +2,12 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
     DURATION_PRESETS, DEFAULT_DURATION, parseDuration, formatRemaining, lockMessage,
-    isWindowAllowed, matchChromeWindows, decideStartup,
+    isWindowAllowed, matchBrowserWindows, decideStartup, BROWSERS, browserOfWmClass,
+    boundsMatch, pickAnnounced, parseExpect, upgradeState,
 } from '../gnome-extension/deep-work-lock@deepwork.local/lib/policy.js';
 
 const win = o => ({id: 'W', appId: 'x.desktop', type: 'normal', overrideRedirect: false,
-    transientChain: [], isChrome: false, createdAfterLock: false, ...o});
+    transientChain: [], browser: null, createdAfterLock: false, ...o});
 const ctx = o => ({targetGone: false, announcedIds: new Set(), ...o});
 const winTarget = {kind: 'window', windowId: 'T', appId: 'x.desktop'};
 const appTarget = {kind: 'app', windowId: null, appId: 'x.desktop'};
@@ -77,8 +78,14 @@ test('window target gone: older same-app windows stay locked', () => {
     assert.equal(isWindowAllowed(win({id: 'O', createdAfterLock: false}), winTarget, ctx({targetGone: true})), false);
 });
 
-test('isWindowAllowed rejects unannounced chrome window', () => {
-    const c = win({id: 'C', appId: 'google-chrome.desktop', isChrome: true, createdAfterLock: true});
+test('isWindowAllowed rejects unannounced browser window', () => {
+    for (const browser of ['chrome', 'firefox']) {
+        const c = win({id: 'C', appId: `${browser}.desktop`, browser, createdAfterLock: true});
+        const t = {...tabTarget, appId: `${browser}.desktop`};
+        assert.equal(isWindowAllowed(c, t, ctx()), false, browser);
+        assert.equal(isWindowAllowed(c, t, ctx({announcedIds: new Set(['C'])})), true, browser);
+    }
+    const c = win({id: 'C', appId: 'google-chrome.desktop', browser: 'chrome', createdAfterLock: true});
     assert.equal(isWindowAllowed(c, tabTarget, ctx()), false);
     assert.equal(isWindowAllowed(c, tabTarget, ctx({announcedIds: new Set(['C'])})), true);
     // an older chrome window (another existing window) is rejected too
@@ -87,32 +94,127 @@ test('isWindowAllowed rejects unannounced chrome window', () => {
 
 test('announced chrome popup allowed for a chrome window target', () => {
     const t = {kind: 'window', windowId: 'T', appId: 'google-chrome.desktop'};
-    const c = win({id: 'P', appId: 'google-chrome.desktop', isChrome: true, createdAfterLock: true});
+    const c = win({id: 'P', appId: 'google-chrome.desktop', browser: 'chrome', createdAfterLock: true});
     assert.equal(isWindowAllowed(c, t, ctx()), false);
     assert.equal(isWindowAllowed(c, t, ctx({announcedIds: new Set(['P'])})), true);
 });
 
-test('matchChromeWindows', () => {
-    const m = matchChromeWindows(
+test('matchBrowserWindows: chrome titles', () => {
+    const m = matchBrowserWindows(
         [{id: 'a', title: 'Article - Google Docs - Google Chrome'},
             {id: 'b', title: 'YouTube - Google Chrome'},
             {id: 'c', title: 'Terminal'}],
-        [{id: 7, activeTitle: 'YouTube'}, {id: 9, activeTitle: 'Article - Google Docs'}]);
+        [{id: 7, activeTitle: 'YouTube'}, {id: 9, activeTitle: 'Article - Google Docs'}], 'chrome');
     assert.deepEqual([...m].sort(), [['a', 9], ['b', 7]]);
 });
 
-test('matchChromeWindows skips ambiguous titles', () => {
-    const m = matchChromeWindows(
+test('matchBrowserWindows skips ambiguous titles', () => {
+    const m = matchBrowserWindows(
         [{id: 'a', title: 'Docs - Google Chrome'}, {id: 'b', title: 'Docs - Google Chrome'}],
-        [{id: 1, activeTitle: 'Docs'}, {id: 2, activeTitle: 'Docs'}]);
+        [{id: 1, activeTitle: 'Docs'}, {id: 2, activeTitle: 'Docs'}], 'chrome');
     assert.equal(m.size, 0);
 });
 
-test('matchChromeWindows: short title is not confused with a longer one', () => {
-    const m = matchChromeWindows(
+test('matchBrowserWindows: short chrome title is not confused with a longer one', () => {
+    const m = matchBrowserWindows(
         [{id: 'a', title: 'A - B - Google Chrome'}, {id: 'b', title: 'A - Google Chrome'}],
-        [{id: 1, activeTitle: 'A'}, {id: 2, activeTitle: 'A - B'}]);
+        [{id: 1, activeTitle: 'A'}, {id: 2, activeTitle: 'A - B'}], 'chrome');
     assert.deepEqual([...m].sort(), [['a', 2], ['b', 1]]);
+});
+
+test('browser table', () => {
+    assert.equal(BROWSERS.chrome.bridgeName, 'org.deepworklock.ChromeBridge');
+    assert.equal(BROWSERS.chrome.bridgePath, '/org/deepworklock/ChromeBridge');
+    assert.equal(BROWSERS.firefox.bridgeName, 'org.deepworklock.FirefoxBridge');
+    assert.equal(BROWSERS.firefox.bridgePath, '/org/deepworklock/FirefoxBridge');
+    assert.equal(BROWSERS.firefox.titleSeparator, ' — ');
+    assert.equal(BROWSERS.firefox.name, 'Firefox');
+});
+
+test('browserOfWmClass', () => {
+    assert.equal(browserOfWmClass('Google-chrome', 'google-chrome'), 'chrome');
+    assert.equal(browserOfWmClass('firefox_firefox', 'Navigator'), 'firefox');
+    assert.equal(browserOfWmClass('Gnome-terminal', 'gnome-terminal'), null);
+    assert.equal(browserOfWmClass(null, null), null);
+});
+
+test('matchBrowserWindows: firefox em dash', () => {
+    const m = matchBrowserWindows(
+        [{id: 'a', title: 'Article - Docs — Mozilla Firefox'}, {id: 'b', title: 'YouTube — Mozilla Firefox'},
+            {id: 'c', title: 'YouTube - Google Chrome'}],
+        [{id: 1, activeTitle: 'YouTube'}, {id: 2, activeTitle: 'Article - Docs'}], 'firefox');
+    assert.deepEqual([...m].sort(), [['a', 2], ['b', 1]]);
+});
+
+test('matchBrowserWindows: firefox short title not confused', () => {
+    const m = matchBrowserWindows(
+        [{id: 'a', title: 'A — B — Mozilla Firefox'}, {id: 'b', title: 'A — Mozilla Firefox'}],
+        [{id: 1, activeTitle: 'A'}, {id: 2, activeTitle: 'A — B'}], 'firefox');
+    assert.deepEqual([...m].sort(), [['a', 2], ['b', 1]]);
+});
+
+test('browser window target gone: only announced windows replace it', () => {
+    const t = {kind: 'window', windowId: 'T', appId: 'firefox_firefox.desktop'};
+    const f = win({id: 'N', appId: 'firefox_firefox.desktop', browser: 'firefox', createdAfterLock: true});
+    assert.equal(isWindowAllowed(f, t, ctx({targetGone: true})), false);
+    assert.equal(isWindowAllowed(f, t, ctx({targetGone: true, announcedIds: new Set(['N'])})), true);
+    // a browser dialog stays usable
+    assert.equal(isWindowAllowed({...f, type: 'dialog'}, t, ctx()), true);
+    // non-browser apps keep the V1 rule
+    assert.equal(isWindowAllowed(win({id: 'N', createdAfterLock: true}), winTarget, ctx({targetGone: true})), true);
+});
+
+test('boundsMatch', () => {
+    const r = {x: 140, y: 109, width: 1332, height: 1092};
+    assert.equal(boundsMatch(r, null), true);
+    assert.equal(boundsMatch(r, {left: 180, top: 109, width: 1332, height: 1092}), true);
+    assert.equal(boundsMatch(r, {left: 300, top: 109, width: 1332, height: 1092}), false);
+});
+
+test('pickAnnounced', () => {
+    const r = {x: 140, y: 109, width: 1332, height: 1092};
+    const b = {left: 140, top: 109, width: 1332, height: 1092};
+    const c = [{browser: 'firefox', time: 0, rect: r}, {browser: 'firefox', time: 1000, rect: {x: 0, y: 0, width: 10, height: 10}}];
+    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: null}, 2000), 1);
+    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: b}, 2000), 0);
+});
+
+test('pickAnnounced accepts a late announcement with bounds', () => {
+    const r = {x: 140, y: 109, width: 1332, height: 1092};
+    const c = [{browser: 'firefox', time: 0, rect: r}];
+    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: null}, 5000), -1);
+    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: {left: 150, top: 100, width: 1340, height: 1080}}, 30000), 0);
+    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: {left: 140, top: 109, width: 1332, height: 1092}}, 61000), -1);
+});
+
+test('pickAnnounced ignores other browsers', () => {
+    const c = [{browser: 'chrome', time: 0, rect: {x: 0, y: 0, width: 5, height: 5}}];
+    assert.equal(pickAnnounced(c, {browser: 'firefox', bounds: null}, 100), -1);
+});
+
+test('parseExpect', () => {
+    assert.deepEqual(parseExpect('{"browser":"firefox","reason":"relocated","bounds":null}'),
+        {browser: 'firefox', reason: 'relocated', bounds: null});
+    assert.deepEqual(parseExpect('{"reason":"popup"}'), {browser: 'chrome', reason: 'popup', bounds: null});
+    assert.deepEqual(parseExpect('popup'), {browser: 'chrome', reason: 'popup', bounds: null});
+    assert.equal(parseExpect('{"browser":"opera"}').browser, 'chrome');
+});
+
+test('upgradeState converts a V1 file', () => {
+    const v1 = {version: 1, bootId: 'B', endsAt: 9, target: {kind: 'tab', windowId: '0x1', appId: 'google-chrome.desktop',
+        tabId: 5, chromeWindowId: 2, label: 'x'}, chrome: {kind: 'tab', tabId: 5}, saved: []};
+    const v2 = upgradeState(v1);
+    assert.equal(v2.version, 2);
+    assert.equal(v2.target.browser, 'chrome');
+    assert.equal(v2.target.browserWindowId, 2);
+    assert.equal('chromeWindowId' in v2.target, false);
+    assert.deepEqual(v2.browserLock, {kind: 'tab', tabId: 5});
+    assert.equal('chrome' in v2, false);
+    assert.deepEqual(v2.saved, []);
+    const plain = upgradeState({version: 1, target: {kind: 'window', windowId: '0x2', appId: 'a', tabId: null, chromeWindowId: null}, chrome: null});
+    assert.equal(plain.target.browser, null);
+    assert.equal(upgradeState(null), null);
+    assert.equal(upgradeState(v2), v2);
 });
 
 test('decideStartup', () => {
