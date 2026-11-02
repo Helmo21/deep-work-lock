@@ -1,27 +1,31 @@
-// D-Bus glue: the Shell service called by the native host, and a client for
-// the bridge the host exports.
+// D-Bus glue: the Shell service called by the native hosts, and a client for
+// the bridge each host exports (one per browser).
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
+import {BROWSERS, parseExpect} from './policy.js';
+
 const SHELL_NAME = 'org.deepworklock.Shell';
 const SHELL_PATH = '/org/deepworklock/Shell';
-const BRIDGE_NAME = 'org.deepworklock.ChromeBridge';
-const BRIDGE_PATH = '/org/deepworklock/ChromeBridge';
 const CALL_TIMEOUT_MS = 3000;
 
+// ExpectChromeWindow is what version 1 hosts call; it stays until every
+// running host has been replaced.
 const SHELL_XML = `
 <node>
   <interface name="${SHELL_NAME}">
     <method name="GetLock"><arg type="s" direction="out" name="json"/></method>
+    <method name="ExpectWindow"><arg type="s" direction="in" name="detail"/></method>
     <method name="ExpectChromeWindow"><arg type="s" direction="in" name="reason"/></method>
   </interface>
 </node>`;
 
 export class ShellService {
-    constructor({getLock, expectChromeWindow}) {
+    /** @param expectWindow ({browser, reason, bounds}) => void */
+    constructor({getLock, expectWindow}) {
         this._getLock = getLock;
-        this._expectChromeWindow = expectChromeWindow;
+        this._expectWindow = expectWindow;
     }
 
     export() {
@@ -44,19 +48,26 @@ export class ShellService {
         return JSON.stringify(this._getLock());
     }
 
-    ExpectChromeWindow(reason) {
-        this._expectChromeWindow(reason);
+    ExpectWindow(detail) {
+        this._expectWindow(parseExpect(detail));
+    }
+
+    ExpectChromeWindow(detail) {
+        this._expectWindow({...parseExpect(detail), browser: 'chrome'});
     }
 }
 
 /**
- * Call the native host bridge. Rejects when Chrome or the host is absent.
+ * Call a browser's native host bridge. Rejects when the browser or its host
+ * is absent.
+ * @param {'chrome'|'firefox'} browser
  * @param {'ListWindows'|'Lock'|'Unlock'} method
  */
-export function chromeCall(method, arg = undefined) {
+export function browserCall(browser, method, arg = undefined) {
     return new Promise((resolve, reject) => {
+        const {bridgeName, bridgePath} = BROWSERS[browser];
         const params = arg === undefined ? null : new GLib.Variant('(s)', [JSON.stringify(arg)]);
-        Gio.DBus.session.call(BRIDGE_NAME, BRIDGE_PATH, BRIDGE_NAME, method, params,
+        Gio.DBus.session.call(bridgeName, bridgePath, bridgeName, method, params,
             new GLib.VariantType('(s)'), Gio.DBusCallFlags.NO_AUTO_START, CALL_TIMEOUT_MS, null,
             (connection, result) => {
                 try {

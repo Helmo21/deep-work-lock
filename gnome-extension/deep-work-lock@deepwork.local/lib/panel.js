@@ -14,9 +14,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {
     DURATION_PRESETS, DEFAULT_DURATION, parseDuration, formatRemaining, lockMessage,
-    matchChromeWindows,
+    matchBrowserWindows, BROWSERS,
 } from './policy.js';
-import {listWindows, windowId, appIdOf, isChromeWindow} from './windowGuard.js';
+import {listWindows, windowId, appIdOf, browserOfWindow} from './windowGuard.js';
 
 const DIM_OPACITY = 90;
 const ICON_SIZE = 18;
@@ -62,13 +62,14 @@ class TargetItem extends PopupMenu.PopupBaseMenuItem {
 export const FocusIndicator = GObject.registerClass(
 class FocusIndicator extends PanelMenu.Button {
     /**
-     * @param onLock ({minutes, target}) => void, target = {kind, metaWindow?, appId?, tabId?, chromeWindowId?}
-     * @param chromeCall (method, arg?) => Promise
+     * @param onLock ({minutes, target}) => void,
+     *        target = {kind, metaWindow?, appId?, tabId?, browser?, browserWindowId?}
+     * @param browserCall (browser, method, arg?) => Promise
      */
-    _init({onLock, chromeCall}) {
+    _init({onLock, browserCall}) {
         super._init(0.5, 'Deep Work Lock');
         this._onLock = onLock;
-        this._chromeCall = chromeCall;
+        this._browserCall = browserCall;
         this._minutes = DEFAULT_DURATION;
         this._customMode = false;
         this._selection = null;
@@ -212,32 +213,40 @@ class FocusIndicator extends PanelMenu.Button {
     }
 
     async _refreshTargets() {
-        this._renderTargets(null);
-        const chromeWins = this._candidateWindows().filter(isChromeWindow);
-        if (chromeWins.length === 0)
+        this._renderTargets({});
+        const browsers = [...new Set(this._candidateWindows().map(browserOfWindow).filter(Boolean))];
+        if (browsers.length === 0)
             return;
-        try {
-            const reply = await this._chromeCall('ListWindows');
-            if (this.menu.isOpen)
-                this._renderTargets(reply.windows ?? []);
-        } catch {
-            if (this.menu.isOpen)
-                this._renderTargets(null, true);
-        }
+        // One browser failing must not hide the other's tabs.
+        const replies = await Promise.allSettled(browsers.map(b => this._browserCall(b, 'ListWindows')));
+        if (!this.menu.isOpen)
+            return;
+        const results = {};
+        browsers.forEach((b, i) => {
+            const r = replies[i];
+            results[b] = r.status === 'fulfilled' ? (r.value.windows ?? []) : 'failed';
+        });
+        this._renderTargets(results);
     }
 
-    _renderTargets(chromeWindows, chromeFailed = false) {
+    /** @param results {[browser]: browserWindows[] | 'failed'} */
+    _renderTargets(results) {
         this._targetsSection.removeAll();
         this._targetItems.clear();
         const tracker = Shell.WindowTracker.get_default();
         const windows = this._candidateWindows();
 
-        const matches = chromeWindows
-            ? matchChromeWindows(
-                windows.filter(isChromeWindow).map(w => ({id: windowId(w), title: w.get_title()})),
-                chromeWindows)
-            : new Map();
-        const chromeById = new Map((chromeWindows ?? []).map(c => [c.id, c]));
+        // X11 window id -> {browser, window} for windows paired with a browser window.
+        const paired = new Map();
+        for (const [browser, list] of Object.entries(results)) {
+            if (list === 'failed')
+                continue;
+            const xwins = windows.filter(w => browserOfWindow(w) === browser)
+                .map(w => ({id: windowId(w), title: w.get_title()}));
+            const byId = new Map(list.map(bw => [bw.id, bw]));
+            for (const [xid, bwId] of matchBrowserWindows(xwins, list, browser))
+                paired.set(xid, {browser, window: byId.get(bwId)});
+        }
 
         // Group windows by app, keeping first-seen order.
         const groups = new Map();
@@ -261,9 +270,9 @@ class FocusIndicator extends PanelMenu.Button {
             }
             for (const win of wins) {
                 const xid = windowId(win);
-                const chromeWin = chromeById.get(matches.get(xid));
-                if (chromeWin) {
-                    this._addChromeWindow(win, chromeWin, iconFor(app));
+                const match = paired.get(xid);
+                if (match) {
+                    this._addBrowserWindow(win, match.browser, match.window, iconFor(app));
                 } else {
                     this._addTarget(this._targetsSection, {
                         key: `win:${xid}`, kind: 'window', metaWindow: win, appId,
@@ -273,9 +282,12 @@ class FocusIndicator extends PanelMenu.Button {
             }
         }
 
-        if (chromeFailed) {
+        for (const [browser, list] of Object.entries(results)) {
+            if (list !== 'failed')
+                continue;
             const hint = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
-            hint.add_child(new St.Label({text: 'Extension Chrome non connectée : onglets indisponibles',
+            hint.add_child(new St.Label({
+                text: `Extension ${BROWSERS[browser].name} non connectée : onglets indisponibles`,
                 style_class: 'dwl-hint'}));
             this._targetsSection.addMenuItem(hint);
         }
@@ -295,10 +307,10 @@ class FocusIndicator extends PanelMenu.Button {
         return item;
     }
 
-    _addChromeWindow(win, chromeWin, icon) {
-        const count = chromeWin.tabs.length;
+    _addBrowserWindow(win, browser, browserWin, icon) {
+        const count = browserWin.tabs.length;
         const sub = new PopupMenu.PopupSubMenuMenuItem(win.get_title(), true);
-        sub.icon.gicon = icon.gicon ?? new Gio.ThemedIcon({name: 'google-chrome'});
+        sub.icon.gicon = icon.gicon ?? new Gio.ThemedIcon({name: BROWSERS[browser].icon});
         sub.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         sub.label.add_style_class_name('dwl-target-title');
         sub.insert_child_below(new St.Label({text: `${count} onglet${count > 1 ? 's' : ''}`,
@@ -308,12 +320,12 @@ class FocusIndicator extends PanelMenu.Button {
         const appId = appIdOf(win);
         this._addTarget(sub.menu, {
             key: `win:${windowId(win)}`, kind: 'window', metaWindow: win, appId,
-            chromeWindowId: chromeWin.id, icon: null, title: 'Toute la fenêtre', kindLabel: 'fenêtre',
+            browser, browserWindowId: browserWin.id, icon: null, title: 'Toute la fenêtre', kindLabel: 'fenêtre',
         });
-        for (const tab of chromeWin.tabs) {
+        for (const tab of browserWin.tabs) {
             this._addTarget(sub.menu, {
-                key: `tab:${tab.id}`, kind: 'tab', metaWindow: win, appId,
-                chromeWindowId: chromeWin.id, tabId: tab.id,
+                key: `tab:${browser}:${tab.id}`, kind: 'tab', metaWindow: win, appId,
+                browser, browserWindowId: browserWin.id, tabId: tab.id,
                 icon: null, title: `${tab.active ? '◉' : '○'} ${tab.title || tab.url}`, kindLabel: 'onglet',
             });
         }

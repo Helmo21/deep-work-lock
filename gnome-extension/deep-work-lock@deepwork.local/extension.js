@@ -1,4 +1,4 @@
-// Deep Work Lock: keeps one window, app or Chrome tab in front until the
+// Deep Work Lock: keeps one window, app or browser tab in front until the
 // timer runs out. There is deliberately no way to stop a session early.
 
 import GLib from 'gi://GLib';
@@ -6,31 +6,21 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-import {decideStartup} from './lib/policy.js';
+import {decideStartup, upgradeState, BROWSERS} from './lib/policy.js';
 import {readState, writeState, clearState, currentBootId} from './lib/stateStore.js';
 import {captureAndApply, applyPlan, restoreSettings, releaseSettings} from './lib/settingsGuard.js';
-import {WindowGuard, windowId, appIdOf, isChromeWindow} from './lib/windowGuard.js';
+import {WindowGuard, windowId, appIdOf, browserOfWindow} from './lib/windowGuard.js';
 import {FocusIndicator, SessionChrome} from './lib/panel.js';
-import {ShellService, chromeCall} from './lib/dbus.js';
+import {ShellService, browserCall} from './lib/dbus.js';
 
 const log = msg => console.log(`[deep-work-lock] ${msg}`);
-
-// ExpectChromeWindow carries JSON {reason, bounds}; accept a bare reason too.
-function parseExpect(detail) {
-    try {
-        const parsed = JSON.parse(detail);
-        if (parsed && typeof parsed === 'object')
-            return {reason: parsed.reason ?? 'popup', bounds: parsed.bounds ?? null};
-    } catch {}
-    return {reason: String(detail), bounds: null};
-}
 
 export default class DeepWorkLockExtension extends Extension {
     enable() {
         this._session = null;
 
         // Crash/reboot recovery runs first, so nothing below can prevent it.
-        const state = readState();
+        const state = upgradeState(readState());
         const startup = decideStartup(state, currentBootId(), Date.now());
         if (startup === 'restore') {
             log('previous session found after reboot or expiry: restoring settings');
@@ -44,7 +34,7 @@ export default class DeepWorkLockExtension extends Extension {
 
         this._indicator = new FocusIndicator({
             onLock: ({minutes, target}) => this._lock(minutes, target),
-            chromeCall,
+            browserCall,
         });
         Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'right');
 
@@ -54,7 +44,7 @@ export default class DeepWorkLockExtension extends Extension {
 
         this._service = new ShellService({
             getLock: () => this._lockInfo(),
-            expectChromeWindow: detail => this._guard.expectChromeWindow(parseExpect(detail)),
+            expectWindow: detail => this._guard.expectWindow(detail),
         });
         try {
             this._service.export();
@@ -108,7 +98,7 @@ export default class DeepWorkLockExtension extends Extension {
         const now = Date.now();
         const win = uiTarget.metaWindow ?? null;
         const state = {
-            version: 1,
+            version: 2,
             bootId: currentBootId(),
             startedAt: now,
             endsAt: now + minutes * 60_000,
@@ -117,10 +107,11 @@ export default class DeepWorkLockExtension extends Extension {
                 windowId: win && uiTarget.kind !== 'app' ? windowId(win) : null,
                 appId: uiTarget.appId ?? (win ? appIdOf(win) : null),
                 tabId: uiTarget.tabId ?? null,
-                chromeWindowId: uiTarget.chromeWindowId ?? null,
+                browser: uiTarget.browser ?? null,
+                browserWindowId: uiTarget.browserWindowId ?? null,
                 label: uiTarget.label ?? '',
             },
-            chrome: null,
+            browserLock: null,
             saved: [],
         };
 
@@ -137,27 +128,30 @@ export default class DeepWorkLockExtension extends Extension {
             return;
         }
 
-        const chromeLock = this._chromeLockRequest(state, win);
-        if (chromeLock) {
-            chromeCall('Lock', chromeLock).then(lock => {
+        const {browser} = state.target;
+        const request = this._browserLockRequest(state, win);
+        if (request) {
+            browserCall(browser, 'Lock', request).then(lock => {
                 if (this._session !== state)
                     return;
-                state.chrome = lock;
+                state.browserLock = lock;
                 writeState(state);
             }).catch(e => {
-                log(`Chrome lock failed: ${e.message}`);
+                log(`${browser} lock failed: ${e.message}`);
                 if (state.target.kind === 'tab')
-                    this._chrome.flashText('Chrome injoignable : verrou limité à la fenêtre');
+                    this._chrome.flashText(`${BROWSERS[browser].name} injoignable : verrou limité à la fenêtre`);
             });
         }
     }
 
-    _chromeLockRequest(state, win) {
-        const {kind, tabId, chromeWindowId} = state.target;
+    _browserLockRequest(state, win) {
+        const {kind, tabId, browser, browserWindowId} = state.target;
+        if (!browser)
+            return null;
         if (kind === 'tab')
-            return {kind: 'tab', tabId, windowId: chromeWindowId, endsAt: state.endsAt};
-        if (kind === 'window' && win && isChromeWindow(win) && chromeWindowId !== null)
-            return {kind: 'window', windowId: chromeWindowId, endsAt: state.endsAt};
+            return {kind: 'tab', tabId, windowId: browserWindowId, endsAt: state.endsAt};
+        if (kind === 'window' && win && browserOfWindow(win) === browser && browserWindowId !== null)
+            return {kind: 'window', windowId: browserWindowId, endsAt: state.endsAt};
         return null;
     }
 
@@ -192,7 +186,8 @@ export default class DeepWorkLockExtension extends Extension {
         } finally {
             this._stopEnforcement();
             this._indicator.setIdle();
-            chromeCall('Unlock').catch(() => {});
+            if (state.target.browser)
+                browserCall(state.target.browser, 'Unlock').catch(() => {});
             global.display.get_sound_player().play_from_theme('complete', 'Session Deep Work terminée', null);
             log('session finished');
         }
@@ -238,7 +233,12 @@ export default class DeepWorkLockExtension extends Extension {
     _lockInfo() {
         if (!this._session)
             return {active: false};
-        return {active: true, endsAt: this._session.endsAt, chrome: this._session.chrome};
+        const {target, browserLock} = this._session;
+        // `chrome` keeps version 1 Chrome extensions working during an update.
+        return {
+            active: true, endsAt: this._session.endsAt, browser: target.browser, lock: browserLock,
+            chrome: target.browser === 'chrome' ? browserLock : null,
+        };
     }
 
     _onSessionModeUpdated() {

@@ -7,10 +7,10 @@ import Shell from 'gi://Shell';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {isWindowAllowed} from './policy.js';
-
-const ANNOUNCE_WINDOW_MS = 3000;
-const BOUNDS_TOLERANCE_PX = 60;
+import {
+    isWindowAllowed, browserOfWmClass, boundsMatch, pickAnnounced,
+    ANNOUNCE_WINDOW_MS, RECOVERY_WINDOW_MS,
+} from './policy.js';
 
 /**
  * Bring a window up, switching to its workspace if needed. A plain
@@ -20,14 +20,9 @@ function focusWindow(win) {
     Main.activateWindow(win, global.display.get_current_time_roundtrip());
 }
 
-function boundsMatch(win, bounds) {
-    if (!bounds)
-        return true;
+function frameRect(win) {
     const r = win.get_frame_rect();
-    return Math.abs(r.x - bounds.left) <= BOUNDS_TOLERANCE_PX &&
-        Math.abs(r.y - bounds.top) <= BOUNDS_TOLERANCE_PX &&
-        Math.abs(r.width - bounds.width) <= BOUNDS_TOLERANCE_PX &&
-        Math.abs(r.height - bounds.height) <= BOUNDS_TOLERANCE_PX;
+    return {x: r.x, y: r.y, width: r.width, height: r.height};
 }
 
 const TYPE_NAMES = new Map([
@@ -62,8 +57,9 @@ export function appIdOf(win) {
     return app.get_id();
 }
 
-export function isChromeWindow(win) {
-    return /google-chrome/i.test(`${win.get_wm_class() ?? ''} ${win.get_wm_class_instance() ?? ''}`);
+/** 'chrome', 'firefox' or null. */
+export function browserOfWindow(win) {
+    return browserOfWmClass(win.get_wm_class(), win.get_wm_class_instance());
 }
 
 export function listWindows() {
@@ -154,28 +150,29 @@ export class WindowGuard {
     }
 
     /**
-     * The Chrome extension vouches for a Chrome window it just opened.
-     * @param detail {reason: 'popup'|'relocated', bounds: {left, top, width, height}|null}
+     * A browser extension vouches for a window of its browser.
+     * @param detail {browser, reason: 'popup'|'relocated', bounds: {left, top, width, height}|null}
      */
-    expectChromeWindow({reason, bounds}) {
+    expectWindow({browser, reason, bounds}) {
         if (!this._active)
             return;
         this._prunePending();
-        // Newest first; with bounds, only a window of that size and place.
-        const match = [...this._pending].reverse().find(p => boundsMatch(p.win, bounds));
-        if (match) {
+        const candidates = this._pending.map(p => ({browser: p.browser, time: p.time, rect: frameRect(p.win)}));
+        const index = pickAnnounced(candidates, {browser, bounds}, Date.now());
+        if (index >= 0) {
+            const match = this._pending[index];
             this._dropPending(match);
             this._announce(match.win, reason);
         } else {
             this._allowUntil = Date.now() + ANNOUNCE_WINDOW_MS;
-            this._allowDetail = {reason, bounds};
+            this._allowDetail = {browser, reason, bounds};
         }
     }
 
     _prunePending() {
         const now = Date.now();
         for (const p of [...this._pending]) {
-            if (now - p.time >= ANNOUNCE_WINDOW_MS)
+            if (now - p.time >= RECOVERY_WINDOW_MS)
                 this._dropPending(p);
         }
     }
@@ -185,8 +182,8 @@ export class WindowGuard {
         this._pending = this._pending.filter(p => p !== entry);
     }
 
-    _addPending(win) {
-        const entry = {win, time: Date.now(), handler: 0};
+    _addPending(win, browser) {
+        const entry = {win, browser, time: Date.now(), handler: 0};
         entry.handler = win.connect('unmanaged', () => {
             this._pending = this._pending.filter(p => p !== entry);
         });
@@ -242,7 +239,7 @@ export class WindowGuard {
             type: TYPE_NAMES.get(win.get_window_type()) ?? 'other',
             overrideRedirect: win.is_override_redirect(),
             transientChain: chain,
-            isChrome: isChromeWindow(win),
+            browser: browserOfWindow(win),
             createdAfterLock: !this._knownBefore.has(id),
         };
     }
@@ -335,13 +332,16 @@ export class WindowGuard {
                     this._bindTargetWindow(win);
                 return GLib.SOURCE_REMOVE;
             }
-            if (isChromeWindow(win)) {
-                if (Date.now() < this._allowUntil && boundsMatch(win, this._allowDetail.bounds)) {
+            const browser = browserOfWindow(win);
+            if (browser) {
+                const detail = this._allowDetail;
+                if (Date.now() < this._allowUntil && detail.browser === browser &&
+                    boundsMatch(frameRect(win), detail.bounds)) {
                     this._allowUntil = 0;
-                    this._announce(win, this._allowDetail.reason);
+                    this._announce(win, detail.reason);
                     return GLib.SOURCE_REMOVE;
                 }
-                this._addPending(win);
+                this._addPending(win, browser);
             }
             this._hide(win);
             if (!this._suspended) {
