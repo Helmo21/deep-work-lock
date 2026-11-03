@@ -71,3 +71,4 @@ npm test   # politiques JS (node --test), réglages (gjs, GSettings en mémoire)
 Structure : `gnome-extension/` (verrou bureau, menu, service D-Bus `org.deepworklock.Shell`), `chrome-extension/` (verrou d'onglet MV3, partagé avec Firefox), `scripts/build-firefox.mjs` (construit `build/firefox/` avec le manifeste Firefox), `native-host/` (pont navigateur ⇄ D-Bus `org.deepworklock.ChromeBridge` ou `org.deepworklock.FirefoxBridge`, selon le navigateur qui le lance).
 
 ⚠️ Pour tester dans un `gnome-shell --nested`, exporte `GSETTINGS_BACKEND=memory` : sinon le verrou modifie les vrais réglages de ta session.
+# deep-work-lock
