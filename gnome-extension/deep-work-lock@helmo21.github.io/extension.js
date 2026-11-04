@@ -13,6 +13,7 @@ import {captureAndApply, applyPlan, restoreSettings, releaseSettings} from './li
 import {WindowGuard, windowId, appIdOf, browserOfWindow} from './lib/windowGuard.js';
 import {FocusIndicator, SessionChrome} from './lib/panel.js';
 import {ShellService, browserCall} from './lib/dbus.js';
+import {installNativeHost} from './lib/hostSetup.js';
 
 const log = msg => console.log(`[deep-work-lock] ${msg}`);
 
@@ -38,6 +39,9 @@ export default class DeepWorkLockExtension extends Extension {
                 console.error(`[deep-work-lock] restore failed, state file kept: ${e.message}`);
             }
         }
+
+        const {errors} = installNativeHost(this.path);
+        errors.forEach(e => console.warn(`[deep-work-lock] native host setup: ${e}`));
 
         this._indicator = new FocusIndicator({
             onLock: ({minutes, target}) => this._lock(minutes, target),

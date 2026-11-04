@@ -44,3 +44,10 @@ test('site url is https and the placeholder is recognisable', () => {
 test('license', () => {
     assert.match(readFileSync('LICENSE', 'utf8'), /GNU GENERAL PUBLIC LICENSE\s+Version 3/);
 });
+
+test('extension constants match release.json', async () => {
+    const c = await import(`../${extensionDir('.')}/lib/constants.js`);
+    assert.equal(c.CHROME_EXTENSION_ID, RELEASE.chromeExtensionId);
+    assert.equal(c.GECKO_ID, RELEASE.geckoId);
+    assert.equal(c.HOST_NAME, RELEASE.hostName);
+});
