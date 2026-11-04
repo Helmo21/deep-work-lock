@@ -14,7 +14,7 @@ Replace `<your-domain>` with the `siteUrl` from `release.json`. The installer lo
 
 Usage, behaviour choices and known limits are documented on the website, on the Docs page (source: `site/app/docs/page.tsx`).
 
-Requirements: GNOME Shell 46 to 49 (X11 or Wayland), plus Google Chrome (.deb) and/or Firefox (snap, or Mozilla's repositories or tarball).
+Requirements: GNOME Shell 46 to 49 (X11 or Wayland), plus Google Chrome (.deb) and/or Firefox (snap, Mozilla's repositories, or the tarball in /opt/firefox or on your PATH).
 
 ## Development
 

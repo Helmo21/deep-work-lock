@@ -103,8 +103,9 @@ export default function DocsPage() {
             <List>
               <li>GNOME Shell 46, 47, 48 or 49.</li>
               <li>
-                To lock browser tabs: Google Chrome (the .deb from Google) and/or Firefox (the snap, or the build from
-                Mozilla&apos;s repositories or tarball). Only the browsers you have are configured.
+                To lock browser tabs: Google Chrome (the .deb from Google) and/or Firefox (the snap, the build from
+                Mozilla&apos;s repositories, or the tarball in /opt/firefox or on your PATH). Only the browsers you
+                have are configured.
               </li>
             </List>
             <P>Running the command again is safe: it updates an existing installation and ends in the same state.</P>
@@ -168,7 +169,11 @@ export default function DocsPage() {
                 <strong className="text-white">Browser windows with the same title:</strong> they do not offer their tabs
                 in the menu, because there is no way to tell them apart. They can still be locked as windows.
               </li>
-              <li><strong className="text-white">GNOME Shell restarts:</strong> the session resumes with the time remaining.</li>
+              <li>
+                <strong className="text-white">GNOME Shell restarts:</strong> on X11 the session resumes with the time
+                remaining. On Wayland a Shell restart ends your login, so the session ends and your settings are
+                restored.
+              </li>
               <li><strong className="text-white">The computer restarts:</strong> the session ends and every setting is restored at startup.</li>
             </List>
           </Section>
@@ -199,6 +204,11 @@ export default function DocsPage() {
                 <p>
                   Restart Chrome and wait a minute, then open <Code>chrome://policy</Code> and check that the Deep Work
                   Lock policy is listed.
+                </p>
+                <p>
+                  On a managed computer, if another file in <Code>/etc/opt/chrome/policies/managed/</Code> also defines{" "}
+                  <Code>ExtensionSettings</Code>, Chrome keeps only one of them: check which one wins in{" "}
+                  <Code>chrome://policy</Code>.
                 </p>
               </Problem>
               <Problem title={'Firefox tabs are "unavailable"'}>
