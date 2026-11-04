@@ -4,7 +4,7 @@ import {
     DURATION_PRESETS, DEFAULT_DURATION, parseDuration, formatRemaining, lockMessage,
     isWindowAllowed, matchBrowserWindows, decideStartup, BROWSERS, browserOfWmClass,
     boundsMatch, pickAnnounced, parseExpect, upgradeState,
-} from '../gnome-extension/deep-work-lock@deepwork.local/lib/policy.js';
+} from '../gnome-extension/deep-work-lock@helmo21.github.io/lib/policy.js';
 
 const win = o => ({id: 'W', appId: 'x.desktop', type: 'normal', overrideRedirect: false,
     transientChain: [], browser: null, createdAfterLock: false, ...o});

@@ -11,10 +11,18 @@ test('one version everywhere', () => {
     assert.equal(json('chrome-extension/manifest.json').version, RELEASE.version);
 });
 
-// Task 3 renames the GNOME extension directory to the uuid; until then this stays a todo.
-test('gnome metadata carries the version and the extension dir is named after the uuid', {todo: 'task 3'}, () => {
+test('gnome metadata carries the version and the extension dir is named after the uuid', () => {
     assert.ok(existsSync(extensionDir('.')), 'extension directory is named after the uuid');
     assert.equal(json(`${extensionDir('.')}/metadata.json`)['version-name'], RELEASE.version);
+});
+
+test('metadata for extensions.gnome.org', () => {
+    const m = json(`${extensionDir('.')}/metadata.json`);
+    assert.equal(m.uuid, RELEASE.uuid);
+    assert.deepEqual(m['shell-version'], ['46', '47', '48', '49']);
+    assert.equal(m.url, 'https://github.com/Helmo21/deep-work-lock');
+    assert.deepEqual(m['session-modes'], ['user', 'unlock-dialog']);
+    assert.match(m.description, /unlock dialog/);
 });
 
 test('chrome extension id derives from the manifest key', () => {

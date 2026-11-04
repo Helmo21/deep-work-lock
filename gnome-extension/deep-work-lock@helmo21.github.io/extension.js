@@ -35,6 +35,7 @@ export default class DeepWorkLockExtension extends Extension {
         this._indicator = new FocusIndicator({
             onLock: ({minutes, target}) => this._lock(minutes, target),
             browserCall,
+            versionName: this.metadata['version-name'],
         });
         Main.panel.addToStatusArea(this.uuid, this._indicator, 0, 'right');
 

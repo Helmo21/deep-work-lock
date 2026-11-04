@@ -2,7 +2,7 @@
 # Removes Deep Work Lock and puts back any setting a session left changed.
 set -euo pipefail
 
-UUID="deep-work-lock@deepwork.local"
+UUID="deep-work-lock@helmo21.github.io"
 STATE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/deep-work-lock/session.json"
 
 if [[ -f "$STATE_FILE" ]]; then

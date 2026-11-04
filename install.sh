@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-UUID="deep-work-lock@deepwork.local"
+UUID="deep-work-lock@helmo21.github.io"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$UUID"
 HOST_DIR="$HOME/.local/share/deep-work-lock"
 HOST_MANIFEST_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"

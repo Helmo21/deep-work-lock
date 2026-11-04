@@ -41,3 +41,7 @@
 .dwl-go:insensitive { background-color: #444444; color: #999999; }
 .dwl-hint { color: #888888; font-size: 0.85em; }
 .dwl-shield { background-color: transparent; }
+.dwl-footer {
+  font-size: 0.75em;
+  color: #888888;
+}

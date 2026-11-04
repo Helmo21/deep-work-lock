@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {neutralizePlan} from '../gnome-extension/deep-work-lock@deepwork.local/lib/keybindings.js';
+import {neutralizePlan} from '../gnome-extension/deep-work-lock@helmo21.github.io/lib/keybindings.js';
 
 const schemaKeys = {
     'org.gnome.desktop.wm.keybindings': ['switch-applications', 'close', 'panel-run-dialog', 'toggle-maximized', 'switch-to-workspace-1'],

@@ -1,9 +1,9 @@
 {
-  "uuid": "deep-work-lock@deepwork.local",
+  "uuid": "deep-work-lock@helmo21.github.io",
   "name": "Deep Work Lock",
   "description": "Locks the screen on one window, app or browser tab until the timer runs out. Runs in the unlock dialog so the lock survives the lock screen.",
-  "shell-version": ["46"],
+  "shell-version": ["46", "47", "48", "49"],
   "session-modes": ["user", "unlock-dialog"],
-  "url": "",
+  "url": "https://github.com/Helmo21/deep-work-lock",
   "version-name": "0.2.0"
 }

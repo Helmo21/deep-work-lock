@@ -65,11 +65,13 @@ class FocusIndicator extends PanelMenu.Button {
      * @param onLock ({minutes, target}) => void,
      *        target = {kind, metaWindow?, appId?, tabId?, browser?, browserWindowId?}
      * @param browserCall (browser, method, arg?) => Promise
+     * @param versionName shown in the menu footer
      */
-    _init({onLock, browserCall}) {
+    _init({onLock, browserCall, versionName}) {
         super._init(0.5, 'Deep Work Lock');
         this._onLock = onLock;
         this._browserCall = browserCall;
+        this._versionName = versionName;
         this._minutes = DEFAULT_DURATION;
         this._customMode = false;
         this._selection = null;
@@ -140,6 +142,11 @@ class FocusIndicator extends PanelMenu.Button {
         this._goButton.connect('clicked', () => this._lockNow());
         goItem.add_child(this._goButton);
         this.menu.addMenuItem(goItem);
+
+        const footerItem = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        footerItem.add_child(new St.Label({text: `Deep Work Lock ${this._versionName}`,
+            style_class: 'dwl-footer'}));
+        this.menu.addMenuItem(footerItem);
 
         this._choosePreset(DEFAULT_DURATION);
     }

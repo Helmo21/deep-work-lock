@@ -1,7 +1,7 @@
 // Run with: GSETTINGS_BACKEND=memory gjs -m tests/gjs/settings.test.js
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import {captureAndApply, restoreSettings} from '../../gnome-extension/deep-work-lock@deepwork.local/lib/settingsGuard.js';
+import {captureAndApply, restoreSettings} from '../../gnome-extension/deep-work-lock@helmo21.github.io/lib/settingsGuard.js';
 
 if (GLib.getenv('GSETTINGS_BACKEND') !== 'memory')
     throw new Error('refusing to run without GSETTINGS_BACKEND=memory');
