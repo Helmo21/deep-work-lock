@@ -1,74 +1,53 @@
 # Deep Work Lock
 
-Un verrou de concentration pour GNOME (X11). Tu choisis une durée et une seule cible : une fenêtre, une application entière, ou un onglet Chrome ou Firefox. Jusqu'à la fin du minuteur, c'est la seule chose que tu peux voir et utiliser. Il n'y a pas de bouton « arrêter ».
+A focus lock for GNOME: pick a duration and one target (a window, an app, or a Chrome or Firefox tab), and that is all you can see or use until the timer runs out.
 
-## Installation
+Website: see `siteUrl` in [`release.json`](release.json) (the domain is set when the site goes live).
 
-Installation publique : `scripts/install.sh` (servi par le site, `curl -fsSL <site>/install.sh | bash`). Désinstallation : `scripts/uninstall.sh` (restaure aussi les réglages si une session était en cours).
+## Install
 
-### Développement
+```bash
+curl -fsSL <your-domain>/install.sh | bash
+```
+
+Replace `<your-domain>` with the `siteUrl` from `release.json`. The installer loads the GNOME Shell extension, then adds the Chrome and Firefox extensions through browser policies. To remove everything: `curl -fsSL <your-domain>/uninstall.sh | bash`.
+
+Usage, behaviour choices and known limits are documented on the website, on the Docs page (source: `site/app/docs/page.tsx`).
+
+Requirements: GNOME Shell 46 to 49 on X11, plus Google Chrome and/or Firefox (snap).
+
+## Development
+
+Layout:
+
+- `gnome-extension/` : the GNOME Shell extension (desktop lock, menu, D-Bus service `org.deepworklock.Shell`). It bundles the native host and writes the browser manifests when enabled.
+- `chrome-extension/` : the MV3 tab-lock extension, shared with Firefox.
+- `native-host/` : the Python native-messaging host bridging the browsers and D-Bus.
+- `scripts/` : build, signing, install and uninstall scripts.
+- `site/` : the Next.js website (docs, privacy page, served install scripts).
+- `tests/` : JS, gjs and Python tests.
+
+Install a development build (builds, links the extension into `~/.local/share/gnome-shell/extensions/` and enables it):
 
 ```bash
 scripts/dev-install.sh
 ```
 
-Le script construit le dépôt (`npm run build`), retire l'ancienne installation développeur (`deep-work-lock@deepwork.local`), lie `build/gnome/deep-work-lock@helmo21.github.io` dans `~/.local/share/gnome-shell/extensions/` et active l'extension. L'extension écrit elle-même les manifestes d'hôte Chrome et Firefox à l'activation, et autorise le portail pour Firefox en snap.
+On the first install you must log out and back in so GNOME Shell sees the new extension, then run `gnome-extensions enable deep-work-lock@helmo21.github.io`. The script also removes an old `deep-work-lock@deepwork.local` developer install and `~/.local/share/deep-work-lock/`.
 
-1. Première installation : déconnecte-toi et reconnecte-toi, puis `gnome-extensions enable deep-work-lock@helmo21.github.io`.
-2. Dans Chrome : `chrome://extensions` → Mode développeur → « Charger l'extension non empaquetée » → dossier `build/chrome/`.
-3. Dans Firefox : `about:debugging#/runtime/this-firefox` → « Charger un module complémentaire temporaire » → `build/firefox/manifest.json` (retiré à la fermeture de Firefox), ou le `.xpi` signé (voir ci-dessous).
-
-### Firefox : signature de l'extension
-
-Firefox n'installe de façon permanente qu'une extension signée par Mozilla. Elle est signée « non publiée » (unlisted) : rien n'apparaît sur le catalogue.
-
-1. Crée un compte sur [addons.mozilla.org](https://addons.mozilla.org), puis Outils → **Gérer les clés API** → génère une clé (« JWT issuer ») et un secret.
-2. Lance, sans écrire les clés dans un fichier du dépôt :
-   ```bash
-   WEB_EXT_API_KEY='user:…' WEB_EXT_API_SECRET='…' scripts/sign-firefox.sh
-   ```
-3. Le `.xpi` signé arrive dans `web-ext-artifacts/` (non versionné). Glisse-le dans Firefox.
-
-L'identifiant de l'extension, `deep-work-lock@deepwork.local`, est lié au compte dès la première signature : il ne doit plus jamais changer.
-
-## Utilisation
-
-Clique sur **◉ Focus** dans la barre du haut, choisis une durée (25, 30, 45, 60, 90 min ou une valeur libre), une cible, puis **Verrouiller N min**. Les fenêtres Chrome et Firefox se déplient pour proposer leurs onglets.
-
-Pendant la session :
-
-- la barre du haut et le dock sont grisés et inertes, le compte à rebours s'affiche en orange ;
-- Alt+Tab, Super, la vue d'ensemble, le coin actif, les espaces de travail et les raccourcis de lancement sont coupés ;
-- toute autre fenêtre est minimisée ; les dialogues de la cible restent utilisables ;
-- les notifications sont coupées ;
-- Super+L reste possible, le temps continue de s'écouler.
-
-Pour un onglet Chrome ou Firefox : nouveaux onglets et fenêtres fermés, retour forcé sur l'onglet, pages internes bloquées (`chrome://`, `about:addons`, `about:config`, `about:debugging`…). La navigation reste sur l'hôte de l'onglet et ses sous-domaines : un verrou sur `docs.google.com` n'ouvre ni `mail.google.com` ni `gemini.google.com`. Seules exceptions : les pages de connexion Google, Microsoft et Apple (`accounts.google.com`, `login.microsoftonline.com`…). Les popups ouvertes par l'onglet (connexion) sont autorisées mais restent sur ces mêmes sites, sinon elles sont fermées.
-
-## Choix de comportement
-
-- **Cible fermée** : la session continue. Un onglet fermé est rouvert sur sa dernière adresse. Une fenêtre fermée laisse un bureau vide ; seule une fenêtre de la même application **ouverte après le verrouillage** peut devenir la nouvelle cible (les autres fenêtres déjà ouvertes restent cachées). Si c'était la dernière fenêtre du navigateur, il se ferme et le bureau reste vide jusqu'à la fin. Une nouvelle fenêtre de navigateur ne devient la cible que si l'extension l'annonce.
-- **Firefox qui redémarre de lui-même** (mise à jour) : ses fenêtres restent cachées jusqu'à ce que l'extension se reconnecte, retrouve l'onglet verrouillé (ou le rouvre sur sa dernière adresse) et annonce sa fenêtre. En mode de dépannage, l'extension ne tourne pas : le bureau reste vide.
-- **Fenêtres de navigateur au titre identique** : elles ne proposent pas leurs onglets dans le menu (impossible de savoir laquelle est laquelle) ; elles restent verrouillables comme fenêtres.
-- **Redémarrage de GNOME Shell** : la session reprend avec le temps restant.
-- **Redémarrage de la machine** : la session s'arrête, tous les réglages sont restaurés au démarrage.
-
-## Limites connues
-
-- Ctrl+Alt+F3 (console texte) et le redémarrage permettent de sortir. C'est voulu.
-- Les outils de développement de Chrome **ancrés dans l'onglet** (F12) ne peuvent pas être bloqués par une extension. Détachés dans leur propre fenêtre, ils sont minimisés.
-- Fenêtres incognito / navigation privée : l'extension n'y a pas accès, mais le verrou du bureau les minimise.
-- La barre latérale de Firefox (marque-pages, historique, assistant IA) n'est pas un onglet : une extension ne peut pas la fermer.
-- Si la cible est un terminal, `gnome-extensions disable` reste possible depuis ce terminal.
-- Wayland, les autres bureaux et les autres navigateurs (Chromium, Brave, Firefox hors snap…) ne sont pas pris en charge.
-
-## Développement
+Test and build:
 
 ```bash
-npm test   # politiques JS (node --test), réglages (gjs, GSettings en mémoire), hôte Python
+npm test
+npm run build
 ```
 
-Structure : `gnome-extension/` (verrou bureau, menu, service D-Bus `org.deepworklock.Shell`), `chrome-extension/` (verrou d'onglet MV3, partagé avec Firefox), `scripts/build-firefox.mjs` (construit `build/firefox/` avec le manifeste Firefox), `native-host/` (pont navigateur ⇄ D-Bus `org.deepworklock.ChromeBridge` ou `org.deepworklock.FirefoxBridge`, selon le navigateur qui le lance).
+Warning: when testing in a nested `gnome-shell --nested`, export `GSETTINGS_BACKEND=memory`. Otherwise the lock writes your real session settings.
 
-⚠️ Pour tester dans un `gnome-shell --nested`, exporte `GSETTINGS_BACKEND=memory` : sinon le verrou modifie les vrais réglages de ta session.
-# deep-work-lock
+## Release
+
+See [`docs/release.md`](docs/release.md).
+
+## License
+
+GPL-3.0-or-later. See [`LICENSE`](LICENSE).
