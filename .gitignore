@@ -5,3 +5,4 @@ __pycache__/
 build/
 web-ext-artifacts/
 *.xpi
+.env
