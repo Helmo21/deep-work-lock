@@ -1,851 +1,242 @@
-"use client"
+import type { ReactNode } from "react"
+import Link from "next/link"
+import { CopyCommand } from "@/components/copy-command"
+import { SITE } from "@/lib/site-config"
 
-import { useState } from "react"
-import { Copy, Check, Menu, X, ChevronRight, Terminal, Zap, Settings, Book, Code, Rocket } from "lucide-react"
+export const metadata = {
+  title: "Docs — Deep Work Lock",
+  description: "How Deep Work Lock works, how to install and remove it, and what to do when something goes wrong.",
+}
+
+const sections = [
+  { id: "how-it-works", title: "How it works" },
+  { id: "install", title: "Install" },
+  { id: "using-it", title: "Using it" },
+  { id: "during-a-session", title: "During a session" },
+  { id: "behaviour-choices", title: "Behaviour choices" },
+  { id: "known-limits", title: "Known limits" },
+  { id: "troubleshooting", title: "Troubleshooting" },
+  { id: "uninstall", title: "Uninstall" },
+  { id: "development", title: "Development" },
+]
+
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section id={id} className="scroll-mt-20 space-y-4">
+      <h2 className="text-2xl font-bold text-white border-b border-gray-800 pb-2">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+function P({ children }: { children: ReactNode }) {
+  return <p className="text-gray-300 leading-relaxed">{children}</p>
+}
+
+function List({ children }: { children: ReactNode }) {
+  return <ul className="list-disc pl-5 space-y-2 text-gray-300 leading-relaxed">{children}</ul>
+}
+
+function Code({ children }: { children: ReactNode }) {
+  return <code className="bg-gray-900 border border-gray-800 px-1.5 py-0.5 text-sm text-white break-words">{children}</code>
+}
+
+function Problem({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="border border-gray-800 bg-gray-950 p-4 space-y-2">
+      <h3 className="font-bold text-white">{title}</h3>
+      <div className="text-gray-300 leading-relaxed space-y-2">{children}</div>
+    </div>
+  )
+}
 
 export default function DocsPage() {
-  const [activeSection, setActiveSection] = useState("getting-started")
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [copiedStates, setCopiedStates] = useState<{ [key: string]: boolean }>({})
-
-  const copyToClipboard = async (text: string, key: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopiedStates((prev) => ({ ...prev, [key]: true }))
-      setTimeout(() => {
-        setCopiedStates((prev) => ({ ...prev, [key]: false }))
-      }, 2000)
-    } catch (err) {
-      console.error("Failed to copy text: ", err)
-    }
-  }
-
-  const sidebarSections = [
-    {
-      title: "Getting Started",
-      id: "getting-started",
-      icon: Rocket,
-      items: [
-        { title: "Installation", id: "installation" },
-        { title: "Quick Start", id: "quick-start" },
-        { title: "Configuration", id: "configuration" },
-      ],
-    },
-    {
-      title: "Commands",
-      id: "commands",
-      icon: Terminal,
-      items: [
-        { title: "hexa-cli init", id: "init" },
-        { title: "hexa-cli generate", id: "generate" },
-        { title: "hexa-cli review", id: "review" },
-        { title: "hexa-cli deploy", id: "deploy" },
-      ],
-    },
-    {
-      title: "AI Models",
-      id: "models",
-      icon: Zap,
-      items: [
-        { title: "Model Selection", id: "model-selection" },
-        { title: "Custom Models", id: "custom-models" },
-        { title: "Model Configuration", id: "model-config" },
-      ],
-    },
-    {
-      title: "Integrations",
-      id: "integrations",
-      icon: Settings,
-      items: [
-        { title: "IDE Setup", id: "ide-setup" },
-        { title: "CI/CD Integration", id: "cicd" },
-        { title: "Custom Agents", id: "custom-agents" },
-      ],
-    },
-    {
-      title: "API Reference",
-      id: "api",
-      icon: Code,
-      items: [
-        { title: "CLI API", id: "cli-api" },
-        { title: "Configuration API", id: "config-api" },
-        { title: "Plugin API", id: "plugin-api" },
-      ],
-    },
-  ]
-
-  const renderContent = () => {
-    switch (activeSection) {
-      case "getting-started":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">Getting Started with HEXA CLI</h1>
-              <p className="text-xl text-gray-400 mb-8">
-                HEXA CLI is an AI-powered development tool that helps you ship faster from your terminal.
-              </p>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h2 className="text-2xl font-bold mb-4 text-white flex items-center gap-3">
-                <div className="w-8 h-8 bg-gray-900 border border-gray-600 flex items-center justify-center">
-                  <span className="text-sm font-mono text-white">01</span>
-                </div>
-                Installation
-              </h2>
-              <p className="text-gray-400 mb-4">Install HEXA CLI globally using npm:</p>
-              <div
-                className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                onClick={() => copyToClipboard("npm install -g hexa-cli", "install-cmd")}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">$</span>
-                  <span className="text-white">npm install -g hexa-cli</span>
-                </div>
-                {copiedStates["install-cmd"] ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                )}
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h2 className="text-2xl font-bold mb-4 text-white flex items-center gap-3">
-                <div className="w-8 h-8 bg-gray-900 border border-gray-600 flex items-center justify-center">
-                  <span className="text-sm font-mono text-white">02</span>
-                </div>
-                Quick Start
-              </h2>
-              <p className="text-gray-400 mb-4">Initialize your first AI-powered project:</p>
-              <div className="space-y-3">
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli init my-project", "init-cmd")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli init my-project</span>
-                  </div>
-                  {copiedStates["init-cmd"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("cd my-project", "cd-cmd")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">cd my-project</span>
-                  </div>
-                  {copiedStates["cd-cmd"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() =>
-                    copyToClipboard("hexa-cli generate --model gpt-5 'Create a React component'", "generate-cmd")
-                  }
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli generate --model gpt-5 "Create a React component"</span>
-                  </div>
-                  {copiedStates["generate-cmd"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h2 className="text-2xl font-bold mb-4 text-white flex items-center gap-3">
-                <div className="w-8 h-8 bg-gray-900 border border-gray-600 flex items-center justify-center">
-                  <span className="text-sm font-mono text-white">03</span>
-                </div>
-                What's Next?
-              </h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div
-                  className="border border-gray-700 p-4 hover:border-gray-500 transition-colors cursor-pointer"
-                  onClick={() => setActiveSection("configuration")}
-                >
-                  <h3 className="text-white font-bold mb-2">Configure AI Models</h3>
-                  <p className="text-gray-400 text-sm">Set up your preferred AI models and customize settings</p>
-                </div>
-                <div
-                  className="border border-gray-700 p-4 hover:border-gray-500 transition-colors cursor-pointer"
-                  onClick={() => setActiveSection("ide-setup")}
-                >
-                  <h3 className="text-white font-bold mb-2">IDE Integration</h3>
-                  <p className="text-gray-400 text-sm">Connect HEXA CLI with your favorite development environment</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case "installation":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">Installation</h1>
-              <p className="text-xl text-gray-400 mb-8">Multiple ways to install HEXA CLI on your system.</p>
-            </div>
-
-            <div className="grid gap-6">
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">NPM (Recommended)</h3>
-                <p className="text-gray-400 mb-4">Install globally for system-wide access:</p>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("npm install -g hexa-cli", "npm-install")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">npm install -g hexa-cli</span>
-                  </div>
-                  {copiedStates["npm-install"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">Yarn</h3>
-                <p className="text-gray-400 mb-4">Alternative package manager installation:</p>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("yarn global add hexa-cli", "yarn-install")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">yarn global add hexa-cli</span>
-                  </div>
-                  {copiedStates["yarn-install"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">Direct Download</h3>
-                <p className="text-gray-400 mb-4">Download pre-built binaries for your platform:</p>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-black border border-gray-700 hover:border-gray-500 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <span className="text-gray-500 w-20">macOS:</span>
-                      <code className="text-white">hexa-cli-darwin-x64</code>
-                    </div>
-                    <button className="text-gray-400 hover:text-white transition-colors text-sm">Download</button>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-black border border-gray-700 hover:border-gray-500 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <span className="text-gray-500 w-20">Linux:</span>
-                      <code className="text-white">hexa-cli-linux-x64</code>
-                    </div>
-                    <button className="text-gray-400 hover:text-white transition-colors text-sm">Download</button>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-black border border-gray-700 hover:border-gray-500 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <span className="text-gray-500 w-20">Windows:</span>
-                      <code className="text-white">hexa-cli-win-x64.exe</code>
-                    </div>
-                    <button className="text-gray-400 hover:text-white transition-colors text-sm">Download</button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">Verification</h3>
-                <p className="text-gray-400 mb-4">Verify your installation:</p>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli --version", "version-check")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli --version</span>
-                  </div>
-                  {copiedStates["version-check"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case "configuration":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">Configuration</h1>
-              <p className="text-xl text-gray-400 mb-8">Customize HEXA CLI to match your workflow and preferences.</p>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h2 className="text-2xl font-bold mb-4 text-white">Global Configuration</h2>
-              <p className="text-gray-400 mb-4">Set up your global preferences:</p>
-              <div className="space-y-3">
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli config set model gpt-5", "config-model")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli config set model gpt-5</span>
-                  </div>
-                  {copiedStates["config-model"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli config set auto-review true", "config-review")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli config set auto-review true</span>
-                  </div>
-                  {copiedStates["config-review"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h2 className="text-2xl font-bold mb-4 text-white">Project Configuration</h2>
-              <p className="text-gray-400 mb-4">
-                Create a <code className="text-white bg-black px-2 py-1">hexa.config.json</code> file in your project
-                root:
-              </p>
-              <div className="bg-black border border-gray-700 p-4 font-mono text-sm">
-                <pre className="text-gray-300">{`{
-  "model": "claude-4-sonnet",
-  "rules": [
-    "Use TypeScript for all new files",
-    "Follow React best practices",
-    "Add comprehensive error handling"
-  ],
-  "integrations": {
-    "ide": "vscode",
-    "ci": "github-actions"
-  },
-  "agents": {
-    "reviewer": {
-      "model": "claude-4",
-      "focus": ["security", "performance"]
-    }
-  }
-}`}</pre>
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h2 className="text-2xl font-bold mb-4 text-white">Environment Variables</h2>
-              <div className="space-y-4">
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">HEXA_API_KEY</code>
-                  <p className="text-gray-400 mt-1">Your HEXA CLI API key for premium features</p>
-                </div>
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">HEXA_MODEL</code>
-                  <p className="text-gray-400 mt-1">Default AI model to use (overrides config)</p>
-                </div>
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">HEXA_DEBUG</code>
-                  <p className="text-gray-400 mt-1">Enable debug logging (true/false)</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case "generate":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">hexa-cli generate</h1>
-              <p className="text-xl text-gray-400 mb-8">
-                Generate code, components, and entire features using AI models.
-              </p>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h3 className="text-xl font-bold mb-3 text-white">Basic Usage</h3>
-              <div
-                className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between mb-4"
-                onClick={() => copyToClipboard("hexa-cli generate [prompt]", "basic-generate")}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500">$</span>
-                  <span className="text-white">hexa-cli generate [prompt]</span>
-                </div>
-                {copiedStates["basic-generate"] ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                )}
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h3 className="text-xl font-bold mb-3 text-white">Options</h3>
-              <div className="space-y-4">
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">--model, -m</code>
-                  <p className="text-gray-400 mt-1">Specify AI model (gpt-5, claude-4, gemini-2.5)</p>
-                </div>
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">--context, -c</code>
-                  <p className="text-gray-400 mt-1">Include project context (full, minimal, none)</p>
-                </div>
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">--output, -o</code>
-                  <p className="text-gray-400 mt-1">Specify output file or directory</p>
-                </div>
-                <div className="border-l-2 border-gray-700 pl-4">
-                  <code className="text-white">--interactive, -i</code>
-                  <p className="text-gray-400 mt-1">Enable interactive mode for refinements</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h3 className="text-xl font-bold mb-3 text-white">Examples</h3>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-gray-400 mb-2">Generate a React component:</p>
-                  <div
-                    className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                    onClick={() =>
-                      copyToClipboard(
-                        "hexa-cli generate 'Create a responsive navbar component with dark mode toggle'",
-                        "example-navbar",
-                      )
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">$</span>
-                      <span className="text-white">
-                        hexa-cli generate "Create a responsive navbar component with dark mode toggle"
-                      </span>
-                    </div>
-                    {copiedStates["example-navbar"] ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-gray-400 mb-2">Generate API endpoints:</p>
-                  <div
-                    className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                    onClick={() =>
-                      copyToClipboard(
-                        "hexa-cli generate --model claude-4 'Create REST API for user management with authentication'",
-                        "example-api",
-                      )
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">$</span>
-                      <span className="text-white">
-                        hexa-cli generate --model claude-4 "Create REST API for user management with authentication"
-                      </span>
-                    </div>
-                    {copiedStates["example-api"] ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-gray-400 mb-2">Interactive generation:</p>
-                  <div
-                    className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                    onClick={() =>
-                      copyToClipboard(
-                        "hexa-cli generate --interactive 'Build a dashboard with charts'",
-                        "example-interactive",
-                      )
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">$</span>
-                      <span className="text-white">
-                        hexa-cli generate --interactive "Build a dashboard with charts"
-                      </span>
-                    </div>
-                    {copiedStates["example-interactive"] ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case "model-selection":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">Model Selection</h1>
-              <p className="text-xl text-gray-400 mb-8">Choose and configure AI models for different tasks.</p>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h3 className="text-xl font-bold mb-3 text-white">Available Models</h3>
-              <div className="space-y-4">
-                <div className="border border-gray-700 p-4 hover:border-gray-500 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-white font-bold">GPT-5 (OpenAI)</h4>
-                    <span className="text-green-400 text-sm">● Active</span>
-                  </div>
-                  <p className="text-gray-400 text-sm mb-2">
-                    Latest OpenAI model with enhanced reasoning and code generation
-                  </p>
-                  <div className="flex gap-2 text-xs">
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Code Generation</span>
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Reasoning</span>
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Fast</span>
-                  </div>
-                </div>
-                <div className="border border-gray-700 p-4 hover:border-gray-500 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-white font-bold">Claude-4 Sonnet (Anthropic)</h4>
-                    <span className="text-green-400 text-sm">● Active</span>
-                  </div>
-                  <p className="text-gray-400 text-sm mb-2">Excellent for code review and complex reasoning tasks</p>
-                  <div className="flex gap-2 text-xs">
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Code Review</span>
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Analysis</span>
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Detailed</span>
-                  </div>
-                </div>
-                <div className="border border-gray-700 p-4 hover:border-gray-500 transition-colors">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-white font-bold">Gemini-2.5 Pro (Google)</h4>
-                    <span className="text-green-400 text-sm">● Active</span>
-                  </div>
-                  <p className="text-gray-400 text-sm mb-2">
-                    Great for multimodal tasks and large context understanding
-                  </p>
-                  <div className="flex gap-2 text-xs">
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Multimodal</span>
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Large Context</span>
-                    <span className="bg-gray-800 text-gray-300 px-2 py-1">Versatile</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-950 border border-gray-800 p-6">
-              <h3 className="text-xl font-bold mb-3 text-white">Model Commands</h3>
-              <div className="space-y-3">
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli model list", "model-list")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli model list</span>
-                  </div>
-                  {copiedStates["model-list"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli model set gpt-5", "model-set")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli model set gpt-5</span>
-                  </div>
-                  {copiedStates["model-set"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli model status", "model-status")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli model status</span>
-                  </div>
-                  {copiedStates["model-status"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      case "ide-setup":
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">IDE Setup</h1>
-              <p className="text-xl text-gray-400 mb-8">Integrate HEXA CLI with your development environment.</p>
-            </div>
-
-            <div className="grid gap-6">
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">VS Code Integration</h3>
-                <p className="text-gray-400 mb-4">Install the HEXA CLI extension for VS Code:</p>
-                <div className="space-y-3">
-                  <div
-                    className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                    onClick={() =>
-                      copyToClipboard("code --install-extension hexa-cli.vscode-extension", "vscode-install")
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">$</span>
-                      <span className="text-white">code --install-extension hexa-cli.vscode-extension</span>
-                    </div>
-                    {copiedStates["vscode-install"] ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                    )}
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    <p>Features:</p>
-                    <ul className="list-disc list-inside mt-2 space-y-1">
-                      <li>Inline code generation</li>
-                      <li>AI-powered code completion</li>
-                      <li>Integrated terminal commands</li>
-                      <li>Real-time code review</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">JetBrains IDEs</h3>
-                <p className="text-gray-400 mb-4">Compatible with IntelliJ IDEA, WebStorm, PyCharm, and more:</p>
-                <div
-                  className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                  onClick={() => copyToClipboard("hexa-cli ide setup jetbrains", "jetbrains-setup")}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500">$</span>
-                    <span className="text-white">hexa-cli ide setup jetbrains</span>
-                  </div>
-                  {copiedStates["jetbrains-setup"] ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-gray-950 border border-gray-800 p-6">
-                <h3 className="text-xl font-bold mb-3 text-white">Terminal Integration</h3>
-                <p className="text-gray-400 mb-4">Add shell completions and aliases:</p>
-                <div className="space-y-3">
-                  <div
-                    className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                    onClick={() => copyToClipboard("hexa-cli completion bash >> ~/.bashrc", "bash-completion")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">$</span>
-                      <span className="text-white">hexa-cli completion bash {">"} ~/.bashrc</span>
-                    </div>
-                    {copiedStates["bash-completion"] ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                    )}
-                  </div>
-                  <div
-                    className="bg-black border border-gray-700 p-4 font-mono text-sm cursor-pointer hover:border-gray-500 transition-colors flex items-center justify-between"
-                    onClick={() => copyToClipboard("hexa-cli completion zsh >> ~/.zshrc", "zsh-completion")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">$</span>
-                      <span className="text-white">hexa-cli completion zsh {">"} ~/.zshrc</span>
-                    </div>
-                    {copiedStates["zsh-completion"] ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Copy className="w-4 h-4 text-gray-400 hover:text-white transition-colors" />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-
-      default:
-        return (
-          <div className="space-y-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-4 text-white">Documentation</h1>
-              <p className="text-xl text-gray-400 mb-8">Select a section from the sidebar to get started.</p>
-            </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div
-                className="bg-gray-950 border border-gray-800 p-6 hover:border-gray-600 transition-colors cursor-pointer"
-                onClick={() => setActiveSection("getting-started")}
-              >
-                <Rocket className="w-8 h-8 text-white mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2">Getting Started</h3>
-                <p className="text-gray-400">Quick installation and setup guide</p>
-              </div>
-              <div
-                className="bg-gray-950 border border-gray-800 p-6 hover:border-gray-600 transition-colors cursor-pointer"
-                onClick={() => setActiveSection("commands")}
-              >
-                <Terminal className="w-8 h-8 text-white mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2">Commands</h3>
-                <p className="text-gray-400">Complete CLI command reference</p>
-              </div>
-              <div
-                className="bg-gray-950 border border-gray-800 p-6 hover:border-gray-600 transition-colors cursor-pointer"
-                onClick={() => setActiveSection("models")}
-              >
-                <Zap className="w-8 h-8 text-white mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2">AI Models</h3>
-                <p className="text-gray-400">Configure and use different AI models</p>
-              </div>
-              <div
-                className="bg-gray-950 border border-gray-800 p-6 hover:border-gray-600 transition-colors cursor-pointer"
-                onClick={() => setActiveSection("integrations")}
-              >
-                <Settings className="w-8 h-8 text-white mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2">Integrations</h3>
-                <p className="text-gray-400">IDE setup and workflow integration</p>
-              </div>
-            </div>
-          </div>
-        )
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-black text-white font-mono">
-      <nav className="border-b border-gray-800 bg-gray-950/95 backdrop-blur-sm p-4 relative z-50 sticky top-0">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-6">
-            <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <div className="flex gap-2">
-                <div className="w-3 h-3 bg-red-500"></div>
-                <div className="w-3 h-3 bg-yellow-500"></div>
-                <div className="w-3 h-3 bg-green-500"></div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-white font-bold text-lg">HEXA</span>
-                <span className="text-gray-400 text-sm">CLI</span>
-              </div>
-            </a>
-            <div className="text-gray-500 text-sm">/ Documentation</div>
-          </div>
-
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="lg:hidden text-gray-400 hover:text-white transition-colors"
-          >
-            {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+    <div className="min-h-screen bg-black text-white font-mono overflow-x-hidden">
+      <nav className="border-b border-gray-800 bg-gray-950/95 backdrop-blur-sm px-4 py-3 sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto flex items-center gap-x-6 gap-y-1 flex-wrap text-sm">
+          <Link href="/" className="font-bold tracking-wider whitespace-nowrap">◉ DEEP WORK LOCK</Link>
+          <Link href="/docs" className="text-white">Docs</Link>
+          <a href={SITE.repoUrl} className="text-gray-400 hover:text-white transition-colors">GitHub</a>
+          <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors">Privacy</Link>
         </div>
       </nav>
 
-      <div className="flex">
-        <aside
-          className={`${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-40 w-80 bg-gray-950 border-r border-gray-800 transition-transform duration-300 ease-in-out overflow-y-auto`}
-        >
-          <div className="p-6">
-            <div className="flex items-center gap-3 mb-8">
-              <Book className="w-6 h-6 text-white" />
-              <h2 className="text-xl font-bold text-white">Documentation</h2>
-            </div>
-
-            <nav className="space-y-6">
-              {sidebarSections.map((section) => (
-                <div key={section.id}>
-                  <div
-                    className={`flex items-center gap-3 p-3 cursor-pointer transition-all duration-200 border border-transparent hover:border-gray-700 hover:bg-gray-900 ${
-                      activeSection === section.id ? "bg-gray-900 border-gray-600" : ""
-                    }`}
-                    onClick={() => {
-                      setActiveSection(section.id)
-                      setSidebarOpen(false)
-                    }}
-                  >
-                    <section.icon className="w-5 h-5 text-gray-400" />
-                    <span className="text-white font-medium">{section.title}</span>
-                    <ChevronRight className="w-4 h-4 text-gray-500 ml-auto" />
-                  </div>
-
-                  <div className="ml-8 mt-2 space-y-1">
-                    {section.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`p-2 cursor-pointer text-sm transition-all duration-200 border border-transparent hover:border-gray-700 hover:bg-gray-900 ${
-                          activeSection === item.id ? "bg-gray-900 border-gray-600 text-white" : "text-gray-400"
-                        }`}
-                        onClick={() => {
-                          setActiveSection(item.id)
-                          setSidebarOpen(false)
-                        }}
-                      >
-                        {item.title}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 lg:flex lg:gap-12">
+        <aside className="lg:w-56 lg:shrink-0 mb-10 lg:mb-0">
+          <nav aria-label="Documentation sections" className="lg:sticky lg:top-20">
+            <p className="text-xs uppercase tracking-widest text-gray-500 mb-3">Documentation</p>
+            <ul className="flex flex-wrap gap-x-4 gap-y-2 lg:flex-col lg:gap-y-2 text-sm">
+              {sections.map((s) => (
+                <li key={s.id}>
+                  <a href={`#${s.id}`} className="text-gray-400 hover:text-white transition-colors">{s.title}</a>
+                </li>
               ))}
-            </nav>
-          </div>
+            </ul>
+          </nav>
         </aside>
 
-        <main className="flex-1 lg:ml-0">
-          <div className="max-w-4xl mx-auto p-6 lg:p-12">{renderContent()}</div>
+        <main className="min-w-0 flex-1 max-w-3xl space-y-14">
+          <header className="space-y-3">
+            <h1 className="text-3xl sm:text-4xl font-bold">Documentation</h1>
+            <p className="text-gray-400">Version {SITE.version} — Linux, GNOME on X11 and Wayland.</p>
+          </header>
+
+          <Section id="how-it-works" title="How it works">
+            <P>
+              Deep Work Lock locks a GNOME desktop on one target until a timer runs out. You choose a duration and a
+              single target: a window, a whole application, or one Chrome or Firefox tab. Until the countdown ends, that
+              is the only thing you can see and use. There is no stop button.
+            </P>
+          </Section>
+
+          <Section id="install" title="Install">
+            <P>Run this in a terminal, as your normal user:</P>
+            <CopyCommand command={SITE.installCommand} id="docs-install" />
+            <P>The command does three things:</P>
+            <ol className="list-decimal pl-5 space-y-2 text-gray-300 leading-relaxed">
+              <li>Loads the GNOME extension from extensions.gnome.org. GNOME asks you to confirm, one click.</li>
+              <li>The extension installs its own bridge to your browsers, in your home folder, with no root.</li>
+              <li>Adds the browser extension to Chrome and Firefox. It asks for your password once; then restart your browser.</li>
+            </ol>
+            <h3 className="text-lg font-bold text-white pt-2">Requirements</h3>
+            <List>
+              <li>GNOME Shell 46, 47, 48 or 49.</li>
+              <li>Google Chrome and/or Firefox if you want to lock browser tabs. Only the browsers you have are configured.</li>
+              <li>Firefox installed as a snap is supported; other Firefox builds and other browsers (Chromium, Brave…) are not.</li>
+            </List>
+            <P>Running the command again is safe: it updates an existing installation and ends in the same state.</P>
+            <h3 className="text-lg font-bold text-white pt-2">Two consequences of browser policies</h3>
+            <List>
+              <li>
+                Chrome shows <Code>Managed by your organization</Code> in its menu for as long as the policy that
+                installs the extension exists. Uninstalling removes it.
+              </li>
+              <li>
+                Browser policies live in <Code>/etc</Code> and apply to every account on the computer, so the browser
+                extension appears for every user. The GNOME lock is installed only for the account that ran the command.
+              </li>
+            </List>
+          </Section>
+
+          <Section id="using-it" title="Using it">
+            <P>
+              Click <strong className="text-white">◉ Focus</strong> in the top bar and choose a duration: 25, 30, 45,
+              60 or 90 minutes, or a value of your own. Then choose a target and click{" "}
+              <strong className="text-white">Lock for N min</strong>. Chrome and Firefox windows expand to offer their tabs.
+            </P>
+          </Section>
+
+          <Section id="during-a-session" title="During a session">
+            <List>
+              <li>The top bar and the dock are greyed out and inert, and the countdown shows in orange.</li>
+              <li>Alt+Tab, Super, the overview, the hot corner, workspaces and launcher shortcuts are disabled.</li>
+              <li>Every other window is minimised. Dialogs belonging to the target stay usable.</li>
+              <li>Notifications are turned off.</li>
+              <li>Super+L still works, and the time keeps running while the screen is locked.</li>
+            </List>
+            <P>For a Chrome or Firefox tab:</P>
+            <List>
+              <li>New tabs and windows are closed, and focus is forced back to the tab.</li>
+              <li>Internal pages are blocked (<Code>chrome://</Code>, <Code>about:addons</Code>, <Code>about:config</Code>, <Code>about:debugging</Code>…).</li>
+              <li>
+                Navigation stays on the tab&apos;s host and its subdomains: a lock on <Code>docs.google.com</Code> does
+                not open <Code>mail.google.com</Code> or <Code>gemini.google.com</Code>. The only exceptions are the
+                Google, Microsoft and Apple sign-in pages (<Code>accounts.google.com</Code>, <Code>login.microsoftonline.com</Code>…).
+              </li>
+              <li>Popups opened by the tab (for sign-in) are allowed, but must stay on those same sites or they are closed.</li>
+            </List>
+          </Section>
+
+          <Section id="behaviour-choices" title="Behaviour choices">
+            <List>
+              <li>
+                <strong className="text-white">Target closed:</strong> the session continues. A closed tab is reopened
+                on its last address. A closed window leaves an empty desktop; only a window of the same application{" "}
+                <em>opened after the lock started</em> can become the new target, and windows that were already open stay
+                hidden. If it was the browser&apos;s last window, the browser closes and the desktop stays empty until the
+                end. A new browser window becomes the target only if the extension announces it.
+              </li>
+              <li>
+                <strong className="text-white">Firefox restarting by itself</strong> (an update): its windows stay hidden
+                until the extension reconnects, finds the locked tab (or reopens it on its last address) and announces
+                its window. In Firefox troubleshooting mode the extension does not run, so the desktop stays empty.
+              </li>
+              <li>
+                <strong className="text-white">Browser windows with the same title:</strong> they do not offer their tabs
+                in the menu, because there is no way to tell them apart. They can still be locked as windows.
+              </li>
+              <li><strong className="text-white">GNOME Shell restarts:</strong> the session resumes with the time remaining.</li>
+              <li><strong className="text-white">The computer restarts:</strong> the session ends and every setting is restored at startup.</li>
+            </List>
+          </Section>
+
+          <Section id="known-limits" title="Known limits">
+            <List>
+              <li>Ctrl+Alt+F3 (text console) and rebooting get you out. This is intentional.</li>
+              <li>
+                Chrome DevTools <strong className="text-white">docked in the tab</strong> (F12) cannot be blocked by an
+                extension. Detached into their own window, they are minimised.
+              </li>
+              <li>Incognito and private windows: the extension has no access to them, but the desktop lock minimises them.</li>
+              <li>The Firefox sidebar (bookmarks, history, AI assistant) is not a tab, so an extension cannot close it.</li>
+              <li>If the target is a terminal, <Code>gnome-extensions disable</Code> remains possible from that terminal.</li>
+              <li>Other desktops and other browsers are not supported, and Firefox is supported only as a snap.</li>
+            </List>
+          </Section>
+
+          <Section id="troubleshooting" title="Troubleshooting">
+            <div className="space-y-4">
+              <Problem title="The GNOME dialog never appeared">
+                <p>Run the install command again.</p>
+              </Problem>
+              <Problem title="◉ Focus is missing after install">
+                <p>Log out and back in, so GNOME loads the extension.</p>
+              </Problem>
+              <Problem title="Chrome does not show the extension">
+                <p>
+                  Restart Chrome and wait a minute, then open <Code>chrome://policy</Code> and check that the Deep Work
+                  Lock policy is listed.
+                </p>
+              </Problem>
+              <Problem title={'Firefox tabs are "unavailable"'}>
+                <p>
+                  Restart Firefox, then run the install command again. For a snap Firefox, the command grants the
+                  permission that lets the extension reach the bridge.
+                </p>
+              </Problem>
+              <Problem title={'Chrome says "managed by your organization"'}>
+                <p>
+                  That is how Chrome labels any extension installed by policy. It stays as long as the policy exists
+                  and is removed by the uninstall command.
+                </p>
+              </Problem>
+              <Problem title="Several accounts on this computer">
+                <p>
+                  Browser policies apply to every account on the computer, while the GNOME lock is installed only for
+                  the account that ran the command.
+                </p>
+              </Problem>
+            </div>
+          </Section>
+
+          <Section id="uninstall" title="Uninstall">
+            <P>
+              This removes the extensions and the browser policies, and restores your settings if a session was running.
+            </P>
+            <CopyCommand command={SITE.uninstallCommand} id="docs-uninstall" />
+          </Section>
+
+          <Section id="development" title="Development">
+            <P>
+              The source is on{" "}
+              <a href={SITE.repoUrl} className="underline hover:text-white">GitHub</a>. To try a local build, run{" "}
+              <Code>scripts/dev-install.sh</Code> from a checkout; it builds the repository and links the extension
+              into your GNOME extensions folder. <Code>npm test</Code> runs the test suite.
+            </P>
+          </Section>
         </main>
       </div>
-
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
-      )}
     </div>
   )
 }

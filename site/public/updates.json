@@ -1,0 +1,12 @@
+{
+  "addons": {
+    "deep-work-lock@deepwork.local": {
+      "updates": [
+        {
+          "version": "0.2.0",
+          "update_link": "https://example.invalid/releases/deep-work-lock-0.2.0.xpi"
+        }
+      ]
+    }
+  }
+}

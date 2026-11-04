@@ -66,7 +66,8 @@ get_policies_py() {
         POLICIES_PY="$DWL_POLICIES_PY"
         return
     fi
-    if [[ "$SITE_URL" == *@@* ]]; then
+    local marker="@""@"  # split so that publishing does not substitute it away
+    if [[ "$SITE_URL" == *"$marker"* ]]; then
         fail 1 "This copy of uninstall.sh was not prepared for publishing." \
             "Nothing was changed. Use the uninstall command shown on the Deep Work Lock website."
     fi

@@ -171,7 +171,8 @@ check_system() {
         fail 1 "Deep Work Lock installs for your own account: run the command as your normal user, not as root." \
             "Nothing was changed."
     fi
-    if [[ "$SITE_URL" == *@@* || "$VERSION" == *@@* ]]; then
+    local marker="@""@"  # split so that publishing does not substitute it away
+    if [[ "$SITE_URL" == *"$marker"* || "$VERSION" == *"$marker"* ]]; then
         fail 1 "This copy of install.sh was not prepared for publishing." \
             "Nothing was changed. Use the install command shown on the Deep Work Lock website."
     fi

@@ -5,6 +5,7 @@ __pycache__/
 build/
 web-ext-artifacts/
 *.xpi
+!site/public/releases/*.xpi
 .env
 site/node_modules/
 site/.next/
