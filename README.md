@@ -14,18 +14,18 @@ Replace `<your-domain>` with the `siteUrl` from `release.json`. The installer lo
 
 Usage, behaviour choices and known limits are documented on the website, on the Docs page (source: `site/app/docs/page.tsx`).
 
-Requirements: GNOME Shell 46 to 49 on X11, plus Google Chrome and/or Firefox (snap).
+Requirements: GNOME Shell 46 to 49 (X11 or Wayland), plus Google Chrome (.deb) and/or Firefox (snap, or Mozilla's repositories or tarball).
 
 ## Development
 
 Layout:
 
-- `gnome-extension/` : the GNOME Shell extension (desktop lock, menu, D-Bus service `org.deepworklock.Shell`). It bundles the native host and writes the browser manifests when enabled.
-- `chrome-extension/` : the MV3 tab-lock extension, shared with Firefox.
-- `native-host/` : the Python native-messaging host bridging the browsers and D-Bus.
-- `scripts/` : build, signing, install and uninstall scripts.
-- `site/` : the Next.js website (docs, privacy page, served install scripts).
-- `tests/` : JS, gjs and Python tests.
+- `gnome-extension/`: the GNOME Shell extension (desktop lock, menu, D-Bus service `org.deepworklock.Shell`). It bundles the native host and writes the browser manifests when enabled.
+- `chrome-extension/`: the MV3 tab-lock extension, shared with Firefox.
+- `native-host/`: the Python native-messaging host bridging the browsers and D-Bus.
+- `scripts/`: build, signing, install and uninstall scripts.
+- `site/`: the Next.js website (docs, privacy page, served install scripts).
+- `tests/`: JS, gjs and Python tests.
 
 Install a development build (builds, links the extension into `~/.local/share/gnome-shell/extensions/` and enables it):
 
