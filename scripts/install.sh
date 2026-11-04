@@ -11,9 +11,10 @@
 # stdin is the script itself.
 #
 # Every parameter can be overridden through a DWL_* variable (used by the
-# tests). DWL_DRY_RUN=1 prints each command that would change the system,
-# prefixed with "+ ", instead of running it; gdbus and the detection
-# commands still run (tests replace them with fakes).
+# tests). DWL_DRY_RUN=1 is a test knob: it prints each command that would
+# change the system, prefixed with "+ ", instead of running it. gdbus and the
+# detection commands still run in dry-run (the tests replace them with
+# fakes), so never use DWL_DRY_RUN without a fake gdbus first in PATH.
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
@@ -77,37 +78,71 @@ shell_call() {
     "$GDBUS" call "${SHELL_EXTENSIONS[@]}" "$@" </dev/null 2>&1 || true
 }
 
-extension_active() {
-    shell_call --method org.gnome.Shell.Extensions.GetExtensionInfo "$UUID" \
-        | grep -q "'state': <1\.0>"
+# Sets EXT_STATE (integer, empty when GNOME Shell does not know the
+# extension yet) and EXT_ERROR from GetExtensionInfo.
+read_extension_state() {
+    local info
+    info="$(shell_call --method org.gnome.Shell.Extensions.GetExtensionInfo "$UUID")"
+    EXT_STATE="$(sed -n "s/.*'state': <\([0-9]*\)\(\.[0-9]*\)\{0,1\}>.*/\1/p" <<<"$info")"
+    EXT_ERROR="$(sed -n "s/.*'error': <'\([^']*\)'>.*/\1/p" <<<"$info")"
 }
 
+# GNOME Shell extension states: 1 ACTIVE, 2 INACTIVE, 3 ERROR,
+# 4 OUT_OF_DATE, 5 DOWNLOADING, 6 INITIALIZED, 7 DEACTIVATING,
+# 8 ACTIVATING, 99 UNINSTALLED.
+# Returns 0 when active, 1 when still on its way (unknown, 5, 6, 8) after
+# 15 s; fails the script on any other state.
 wait_until_active() {
     local i
     for ((i = 0; i < 15; i++)); do
-        extension_active && return 0
+        read_extension_state
+        case "$EXT_STATE" in
+            1) return 0 ;;
+            3 | 4) break ;;
+        esac
         sleep 1
     done
-    return 1
+    case "$EXT_STATE" in
+        "" | 5 | 6 | 8) return 1 ;;
+    esac
+    local why="state $EXT_STATE"
+    case "$EXT_STATE" in
+        2) why="it stayed turned off; check that extensions are allowed in the Extensions app" ;;
+        3) why="it reported an error${EXT_ERROR:+: $EXT_ERROR}" ;;
+        4) why="it does not support this GNOME Shell version" ;;
+    esac
+    fail 1 "GNOME installed the extension but could not start it ($why)." \
+        "The browser extension was not set up. Report the problem at https://github.com/$REPO/issues (include the output of: $GNOME_EXTENSIONS info $UUID)"
 }
 
+# Adds the UUID to enabled-extensions and removes it from
+# disabled-extensions, which wins over enabled-extensions in GNOME Shell.
 enable_in_gsettings() {
     if [[ "$DRY_RUN" == "1" ]]; then
-        printf '+ %s: add %s to org.gnome.shell enabled-extensions\n' "$GSETTINGS" "$UUID"
+        printf '+ %s: add %s to org.gnome.shell enabled-extensions, remove it from disabled-extensions\n' "$GSETTINGS" "$UUID"
         return 0
     fi
     python3 - "$GSETTINGS" "$UUID" <<'PY'
 import ast, subprocess, sys
 gsettings, uuid = sys.argv[1], sys.argv[2]
-raw = subprocess.run([gsettings, "get", "org.gnome.shell", "enabled-extensions"],
-                     check=True, capture_output=True, text=True).stdout.strip()
-if raw.startswith("@as "):
-    raw = raw[4:]
-current = ast.literal_eval(raw) if raw else []
-if uuid not in current:
-    current.append(uuid)
-    subprocess.run([gsettings, "set", "org.gnome.shell", "enabled-extensions", str(current)],
-                   check=True)
+
+def get(key):
+    raw = subprocess.run([gsettings, "get", "org.gnome.shell", key], check=True,
+                         capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout.strip()
+    if raw.startswith("@as "):
+        raw = raw[4:]
+    return list(ast.literal_eval(raw)) if raw else []
+
+def put(key, value):
+    subprocess.run([gsettings, "set", "org.gnome.shell", key, str(value)], check=True,
+                   stdin=subprocess.DEVNULL)
+
+disabled = get("disabled-extensions")
+if uuid in disabled:
+    put("disabled-extensions", [u for u in disabled if u != uuid])
+enabled = get("enabled-extensions")
+if uuid not in enabled:
+    put("enabled-extensions", enabled + [uuid])
 PY
 }
 
@@ -173,6 +208,10 @@ check_system() {
         fail 1 "Deep Work Lock needs Google Chrome or Firefox, and neither was found." \
             "Nothing was changed. Install one of them, then run the command again."
     fi
+    if ! command -v "$SUDO" >/dev/null 2>&1; then
+        fail 1 "Deep Work Lock needs $SUDO to set up the browser extension, and it was not found." \
+            "Nothing was changed. Install it (or ask your administrator), then run the command again."
+    fi
 
     if [[ -n "${DWL_POLICIES_PY:-}" ]]; then
         POLICIES_PY="$DWL_POLICIES_PY"
@@ -208,6 +247,10 @@ install_gnome_extension() {
     case "$result" in
         *"'cancelled'"*)
             fail 2 "You cancelled the GNOME dialog. Run the command again when you are ready." \
+                "Nothing else was changed."
+            ;;
+        *"Timeout was reached"* | *TimedOut* | *NoReply*)
+            fail 2 "No answer from the GNOME dialog. Run the command again." \
                 "Nothing else was changed."
             ;;
         *"'successful'"*)

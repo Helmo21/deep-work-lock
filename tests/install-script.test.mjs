@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync, chmodSync, mkdirSync} from 'node:fs';
+import {mkdtempSync, writeFileSync, chmodSync, mkdirSync, readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -77,5 +77,74 @@ test('uninstall removes policies and the extension', () => {
     const r = run(env, 'scripts/uninstall.sh');
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /\+ sudo .*policies\.py remove/);
+    assert.match(r.stdout, /Deep Work Lock is uninstalled/);
+});
+
+// A gsettings that keeps org.gnome.shell keys as files in the sandbox.
+function fakeGsettings(dir, values) {
+    const store = join(dir, 'gsettings');
+    mkdirSync(store);
+    for (const [key, value] of Object.entries(values))
+        writeFileSync(join(store, key), `${value}\n`);
+    const path = join(dir, 'bin', 'gsettings');
+    writeFileSync(path, `#!/bin/bash\ncase "$1" in get) cat "${store}/$3";; set) printf '%s\\n' "$4" > "${store}/$3";; esac\n`);
+    chmodSync(path, 0o755);
+    return key => readFileSync(join(store, key), 'utf8').trim();
+}
+
+const UUID = 'deep-work-lock@helmo21.github.io';
+
+test('zip fallback enables the extension and lifts an earlier disable', () => {
+    const {dir, env} = sandbox({gdbusResult: 'Error: org.gnome.Shell.ExtensionError: not found'});
+    const read = fakeGsettings(dir, {
+        'enabled-extensions': "['other@x']",
+        'disabled-extensions': `['${UUID}', 'keep@x']`,
+    });
+    // Not a dry run: every command that changes something is a fake.
+    const r = run({...env, DWL_DRY_RUN: '0', DWL_CURL: 'echo', DWL_GNOME_EXTENSIONS: 'echo',
+        DWL_GSETTINGS: join(dir, 'bin', 'gsettings')});
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(read('enabled-extensions'), `['other@x', '${UUID}']`);
+    assert.equal(read('disabled-extensions'), "['keep@x']");
+    assert.match(r.stdout, /Log out and back in to finish/);
+});
+
+test('extension in ERROR after a hot-load fails without logout advice or sudo', () => {
+    const {env} = sandbox({state: 3});
+    const r = run(env);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /could not start it \(it reported an error/);
+    assert.match(r.stderr, /github\.com\/Helmo21\/deep-work-lock\/issues/);
+    assert.doesNotMatch(r.stdout + r.stderr, /Log out/);
+    assert.doesNotMatch(r.stdout, /sudo/);
+});
+
+test('GNOME dialog left unanswered: stops, no fallback, no sudo', () => {
+    const {env} = sandbox({gdbusResult: 'Error: Timeout was reached'});
+    const r = run({...env, DWL_CURL: 'echo', DWL_GNOME_EXTENSIONS: 'echo'});
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /No answer from the GNOME dialog\. Run the command again\./);
+    assert.doesNotMatch(r.stdout, /releases\/download|sudo/);
+});
+
+test('missing sudo is reported before anything changes', () => {
+    const {dir, env} = sandbox();
+    const r = run({...env, DWL_SUDO: join(dir, 'no-such-sudo')});
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /needs .*no-such-sudo/);
+    assert.doesNotMatch(r.stdout, /Installing the GNOME extension/);
+});
+
+test('uninstall forgets the extension in enabled- and disabled-extensions', () => {
+    const {dir, env} = sandbox();
+    const read = fakeGsettings(dir, {
+        'enabled-extensions': `['a@x', '${UUID}']`,
+        'disabled-extensions': `['${UUID}']`,
+    });
+    const r = run({...env, DWL_DRY_RUN: '0', DWL_GNOME_EXTENSIONS: 'echo',
+        DWL_GSETTINGS: join(dir, 'bin', 'gsettings')}, 'scripts/uninstall.sh');
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(read('enabled-extensions'), "['a@x']");
+    assert.equal(read('disabled-extensions'), '[]');
     assert.match(r.stdout, /Deep Work Lock is uninstalled/);
 });

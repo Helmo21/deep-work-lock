@@ -6,8 +6,11 @@
 # left changed, removes the native-messaging manifests and the browser
 # policies (one sudo), then the state folder.
 #
-# Same DWL_* overrides and DWL_DRY_RUN=1 behaviour as install.sh. The body
-# lives in main(), called on the last line, and nothing reads stdin.
+# Same DWL_* overrides as install.sh. DWL_DRY_RUN=1 is a test knob: it
+# prints each command that would change the system instead of running it,
+# but gdbus still runs in dry-run (UninstallExtension, PermissionStore), so
+# never use DWL_DRY_RUN without a fake gdbus first in PATH. The body lives in
+# main(), called on the last line, and nothing reads stdin.
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
@@ -88,6 +91,29 @@ remove_gnome_extension() {
     fi
     # Host copy left by the old developer install.
     run rm -rf "$HOME_DIR/.local/share/deep-work-lock"
+    forget_in_gsettings
+}
+
+# Removes the UUID from enabled-extensions and disabled-extensions.
+forget_in_gsettings() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf '+ %s: remove %s from org.gnome.shell enabled-extensions and disabled-extensions\n' "$GSETTINGS" "$UUID"
+        return 0
+    fi
+    python3 - "$GSETTINGS" "$UUID" <<'PY' || say "Could not update org.gnome.shell enabled-extensions; nothing else depends on it."
+import ast, subprocess, sys
+gsettings, uuid = sys.argv[1], sys.argv[2]
+for key in ("enabled-extensions", "disabled-extensions"):
+    raw = subprocess.run([gsettings, "get", "org.gnome.shell", key], check=True,
+                         capture_output=True, text=True, stdin=subprocess.DEVNULL).stdout.strip()
+    if raw.startswith("@as "):
+        raw = raw[4:]
+    current = list(ast.literal_eval(raw)) if raw else []
+    if uuid in current:
+        subprocess.run([gsettings, "set", "org.gnome.shell", key,
+                        str([u for u in current if u != uuid])],
+                       check=True, stdin=subprocess.DEVNULL)
+PY
 }
 
 restore_settings() {
