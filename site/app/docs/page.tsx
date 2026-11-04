@@ -102,8 +102,10 @@ export default function DocsPage() {
             <h3 className="text-lg font-bold text-white pt-2">Requirements</h3>
             <List>
               <li>GNOME Shell 46, 47, 48 or 49.</li>
-              <li>Google Chrome and/or Firefox if you want to lock browser tabs. Only the browsers you have are configured.</li>
-              <li>Firefox installed as a snap is supported; other Firefox builds and other browsers (Chromium, Brave…) are not.</li>
+              <li>
+                To lock browser tabs: Google Chrome (the .deb from Google) and/or Firefox (the snap, or the build from
+                Mozilla&apos;s repositories or tarball). Only the browsers you have are configured.
+              </li>
             </List>
             <P>Running the command again is safe: it updates an existing installation and ends in the same state.</P>
             <h3 className="text-lg font-bold text-white pt-2">Two consequences of browser policies</h3>
@@ -181,7 +183,7 @@ export default function DocsPage() {
               <li>Incognito and private windows: the extension has no access to them, but the desktop lock minimises them.</li>
               <li>The Firefox sidebar (bookmarks, history, AI assistant) is not a tab, so an extension cannot close it.</li>
               <li>If the target is a terminal, <Code>gnome-extensions disable</Code> remains possible from that terminal.</li>
-              <li>Other desktops and other browsers are not supported, and Firefox is supported only as a snap.</li>
+              <li>Other desktops and other browsers (Chromium, Brave, Flatpak browsers) are not supported.</li>
             </List>
           </Section>
 
@@ -201,8 +203,8 @@ export default function DocsPage() {
               </Problem>
               <Problem title={'Firefox tabs are "unavailable"'}>
                 <p>
-                  Restart Firefox, then run the install command again. For a snap Firefox, the command grants the
-                  permission that lets the extension reach the bridge.
+                  Restart Firefox, then run the install command again. If Firefox is the snap, the command also grants
+                  the permission that lets the extension reach the bridge.
                 </p>
               </Problem>
               <Problem title={'Chrome says "managed by your organization"'}>

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, mkdirSync, existsSync, readFileSync, statSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
+import {mkdtempSync, mkdirSync, symlinkSync, existsSync, readFileSync, statSync} from 'node:fs';
+import {spawnSync, execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {buildGnome} from '../scripts/build-gnome.mjs';
@@ -57,8 +57,28 @@ test('prepare-site substitutes the url and writes updates.json', () => {
 test('the committed site files are up to date', () => {
     const out = mkdtempSync(join(tmpdir(), 'dwl-site-'));
     mkdirSync(join(out, 'public'), {recursive: true});
-    for (const written of prepareSite(out)) {
+    const writtenFiles = prepareSite(out);
+    assert.deepEqual(writtenFiles.map(f => f.slice(out.length + 1)).sort(), [
+        'public/install.sh', 'public/policies.py', 'public/uninstall.sh', 'public/updates.json', 'release.json']);
+    for (const written of writtenFiles) {
         const rel = written.slice(out.length + 1);
         assert.equal(readFileSync(join('site', rel), 'utf8'), readFileSync(written, 'utf8'), `${rel} is stale: run npm run prepare-site`);
     }
+});
+
+test('the raw install.sh refuses to run, the prepared copy does not', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'dwl-bin-'));
+    for (const tool of ['id', 'mktemp', 'rm', 'mkdir', 'dirname', 'basename', 'cat'])
+        symlinkSync(execFileSync('which', [tool], {encoding: 'utf8'}).trim(), join(bin, tool));
+    const env = {PATH: bin, HOME: bin};
+    const BASH = execFileSync('which', ['bash'], {encoding: 'utf8'}).trim();
+    const refusal = /not prepared for publishing/;
+    const raw = spawnSync(BASH, ['scripts/install.sh'], {env, encoding: 'utf8'});
+    assert.notEqual(raw.status, 0);
+    assert.match(raw.stdout + raw.stderr, refusal);
+    const out = mkdtempSync(join(tmpdir(), 'dwl-site-'));
+    mkdirSync(join(out, 'public'), {recursive: true});
+    prepareSite(out, {...RELEASE, siteUrl: 'https://dwl.test', version: '9.9.9'});
+    const prepared = spawnSync(BASH, [join(out, 'public/install.sh')], {env, encoding: 'utf8'});
+    assert.doesNotMatch(prepared.stdout + prepared.stderr, refusal);
 });
