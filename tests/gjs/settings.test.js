@@ -36,6 +36,5 @@ restoreSettings([
     {schema: 'org.gnome.mutter', key: 'overlay-key', userValue: "'Super_R'"},
 ]);
 assert(mutter.get_string('overlay-key') === 'Super_R', 'valid entries still restored after missing ones');
-print('settings.test.js: all assertions passed');
-
 assert(/^\d+:\d+$/.test(currentShellInstance()), `shell instance is pid:starttime, got ${currentShellInstance()}`);
+print('settings.test.js: all assertions passed');

@@ -228,8 +228,15 @@ test('decideStartup', () => {
     assert.equal(decideStartup({bootId: 'B1', endsAt: 1000, shellInstance: 'S1'}, wl, 500), 'resume');
     assert.equal(decideStartup({bootId: 'B1', endsAt: 1000, shellInstance: 'S0'}, wl, 500), 'restore');
     assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, wl, 500), 'restore');
+    // An unknown instance never allows a Wayland resume, even if both sides are unknown
+    const unk = {bootId: 'B1', shellInstance: 'unknown', wayland: true};
+    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000, shellInstance: 'unknown'}, unk, 500), 'restore');
 });
 
+test('browserOfWmClass: firefox from Mozilla deb/tarball', () => {
+    assert.equal(browserOfWmClass('firefox', 'Navigator'), 'firefox');
+    assert.equal(browserOfWmClass('firefox_firefox', 'firefox_firefox'), 'firefox');
+});
 
 test('pickAnnounced refuses an ambiguous late announcement', () => {
     const r = {x: 0, y: 0, width: 1920, height: 1080};

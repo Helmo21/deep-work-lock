@@ -212,7 +212,7 @@ export function decideStartup(state, env, nowMs) {
         return 'none';
     if (state.bootId !== env.bootId || nowMs >= state.endsAt)
         return 'restore';
-    if (env.wayland && state.shellInstance !== env.shellInstance)
+    if (env.wayland && (env.shellInstance === 'unknown' || state.shellInstance !== env.shellInstance))
         return 'restore';
     return 'resume';
 }
