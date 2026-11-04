@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build-gnome.mjs && node scripts/build-chrome.mjs && node scripts/build-firefox.mjs",
     "test": "node --test tests/*.test.mjs && GSETTINGS_BACKEND=memory gjs -m tests/gjs/settings.test.js && HOME=$(mktemp -d) gjs -m tests/gjs/host-setup.test.js && python3 -m unittest discover -s native-host -p 'test_*.py'"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.5"
   }
 }

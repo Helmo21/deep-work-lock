@@ -6,8 +6,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
-: "${WEB_EXT_API_KEY:?WEB_EXT_API_KEY manquant (addons.mozilla.org → Outils → Gérer les clés API)}"
-: "${WEB_EXT_API_SECRET:?WEB_EXT_API_SECRET manquant}"
+: "${WEB_EXT_API_KEY:?WEB_EXT_API_KEY is not set (addons.mozilla.org > Tools > Manage API Keys)}"
+: "${WEB_EXT_API_SECRET:?WEB_EXT_API_SECRET is not set}"
+
+SITE_URL="$(node -p "JSON.parse(require('fs').readFileSync('$ROOT/release.json','utf8')).siteUrl")"
+VERSION="$(node -p "JSON.parse(require('fs').readFileSync('$ROOT/release.json','utf8')).version")"
+PLACEHOLDER="$(node --input-type=module -e "import {PLACEHOLDER_SITE_URL} from '$ROOT/scripts/release-config.mjs'; console.log(PLACEHOLDER_SITE_URL)")"
+if [ "$SITE_URL" = "$PLACEHOLDER" ]; then
+    echo "Refusing to sign: siteUrl in release.json is still the placeholder ($SITE_URL)." >&2
+    echo "The signed add-on embeds update_url, so set the real site URL first." >&2
+    exit 1
+fi
 
 node "$ROOT/scripts/build-firefox.mjs" "$ROOT/build/firefox"
 npx --yes web-ext@10.7.0 sign \
@@ -15,7 +24,11 @@ npx --yes web-ext@10.7.0 sign \
     --source-dir "$ROOT/build/firefox" \
     --artifacts-dir "$ROOT/web-ext-artifacts"
 
+XPI="$(ls -1t "$ROOT"/web-ext-artifacts/*.xpi | head -1)"
+mkdir -p "$ROOT/site/public/releases"
+cp "$XPI" "$ROOT/site/public/releases/deep-work-lock-$VERSION.xpi"
+cp "$XPI" "$ROOT/site/public/releases/deep-work-lock-latest.xpi"
+
 echo
-echo "Extension signée :"
-ls -1t "$ROOT"/web-ext-artifacts/*.xpi | head -1
-echo "Installe-la en la glissant dans une fenêtre Firefox (ou about:addons → ⚙ → Installer un module depuis un fichier)."
+echo "Signed extension: $XPI"
+echo "Copied to site/public/releases/deep-work-lock-$VERSION.xpi and deep-work-lock-latest.xpi"
