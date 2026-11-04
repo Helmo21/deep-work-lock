@@ -9,7 +9,12 @@ const SCRIPTS = fileURLToPath(new URL('.', import.meta.url));
 function substitute(text, release) {
     return text
         .replaceAll('@@SITE_URL@@', release.siteUrl)
-        .replaceAll('@@VERSION@@', release.version);
+        .replaceAll('@@VERSION@@', release.version)
+        .replaceAll('@@UUID@@', release.uuid)
+        .replaceAll('@@REPO@@', release.repo)
+        .replaceAll('@@CHROME_ID@@', release.chromeExtensionId)
+        .replaceAll('@@GECKO_ID@@', release.geckoId)
+        .replaceAll('@@HOST_NAME@@', release.hostName);
 }
 
 // Returns the list of files written under siteDir.

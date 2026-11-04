@@ -24,7 +24,16 @@ npx --yes web-ext@10.7.0 sign \
     --source-dir "$ROOT/build/firefox" \
     --artifacts-dir "$ROOT/web-ext-artifacts"
 
-XPI="$(ls -1t "$ROOT"/web-ext-artifacts/*.xpi | head -1)"
+# web-ext names the signed file <slug>-<version>.xpi; older runs may have left
+# other versions next to it, so pick this version's file, not the newest one.
+shopt -s nullglob
+MATCHES=("$ROOT"/web-ext-artifacts/*-"$VERSION".xpi)
+shopt -u nullglob
+if [ "${#MATCHES[@]}" -ne 1 ]; then
+    echo "Expected exactly one signed web-ext-artifacts/*-$VERSION.xpi, found ${#MATCHES[@]}." >&2
+    exit 1
+fi
+XPI="${MATCHES[0]}"
 mkdir -p "$ROOT/site/public/releases"
 cp "$XPI" "$ROOT/site/public/releases/deep-work-lock-$VERSION.xpi"
 cp "$XPI" "$ROOT/site/public/releases/deep-work-lock-latest.xpi"

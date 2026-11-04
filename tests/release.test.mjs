@@ -51,3 +51,27 @@ test('extension constants match release.json', async () => {
     assert.equal(c.GECKO_ID, RELEASE.geckoId);
     assert.equal(c.HOST_NAME, RELEASE.hostName);
 });
+
+test('every other literal copy of an identifier matches release.json', () => {
+    const text = p => readFileSync(p, 'utf8');
+    // The browser extension names the native host it talks to.
+    assert.match(text('chrome-extension/background.js'), new RegExp(`const HOST = '${RELEASE.hostName}';`));
+    // The Firefox build reads the gecko id from release.json.
+    assert.match(text('scripts/build-firefox.mjs'), /GECKO_ID = RELEASE\.geckoId;/);
+    // dev-install links the extension under its uuid.
+    assert.match(text('scripts/dev-install.sh'), new RegExp(`^UUID="${RELEASE.uuid}"$`, 'm'));
+    // metadata url points at the repo.
+    assert.equal(json(`${extensionDir('.')}/metadata.json`).url, `https://github.com/${RELEASE.repo}`);
+    // The public scripts carry placeholders only; prepare-site fills them in.
+    const placeholders = {
+        SITE_URL: 'SITE_URL', UUID: 'UUID', REPO: 'REPO',
+        CHROME_ID: 'CHROME_ID', GECKO_ID: 'GECKO_ID', HOST_NAME: 'HOST_NAME',
+    };
+    for (const script of ['scripts/install.sh', 'scripts/uninstall.sh']) {
+        const body = text(script);
+        for (const [name, marker] of Object.entries(placeholders))
+            assert.match(body, new RegExp(`^${name}="\\$\\{DWL_${name}:-@@${marker}@@\\}"$`, 'm'), `${script} ${name}`);
+        for (const value of [RELEASE.chromeExtensionId, RELEASE.hostName, RELEASE.uuid, RELEASE.repo])
+            assert.ok(!body.includes(value), `${script} hard-codes ${value}`);
+    }
+});

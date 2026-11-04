@@ -31,6 +31,26 @@ test('chrome zip', () => {
         assert.match(listing, new RegExp(`^${f.replace('.', '\\.')}$`, 'm'));
 });
 
+test('chrome build keeps the manifest key by default, --store drops it', () => {
+    const source = readFileSync('chrome-extension/manifest.json', 'utf8');
+    const dev = buildChrome(mkdtempSync(join(tmpdir(), 'dwl-')));
+    assert.equal(readFileSync(join(dev.dir, 'manifest.json'), 'utf8'), source);
+    const store = buildChrome(mkdtempSync(join(tmpdir(), 'dwl-')), {store: true});
+    const zipped = JSON.parse(execFileSync('unzip', ['-p', store.zip, 'manifest.json'], {encoding: 'utf8'}));
+    const {key, ...rest} = JSON.parse(source);
+    assert.ok(key);
+    assert.deepEqual(zipped, rest);
+    const cli = mkdtempSync(join(tmpdir(), 'dwl-'));
+    execFileSync('node', ['scripts/build-chrome.mjs', '--store', cli]);
+    assert.ok(!('key' in JSON.parse(readFileSync(join(cli, 'chrome', 'manifest.json'), 'utf8'))));
+});
+
+test('sign-firefox picks the signed file of this version, not the newest', () => {
+    const script = readFileSync('scripts/sign-firefox.sh', 'utf8');
+    assert.doesNotMatch(script, /ls -1t/);
+    assert.match(script, /web-ext-artifacts\/\*-"\$VERSION"\.xpi/);
+});
+
 test('manifest declares the icons', () => {
     const m = JSON.parse(readFileSync('chrome-extension/manifest.json', 'utf8'));
     assert.deepEqual(m.icons, {16: 'icons/icon-16.png', 48: 'icons/icon-48.png', 128: 'icons/icon-128.png'});
@@ -47,6 +67,12 @@ test('prepare-site substitutes the url and writes updates.json', () => {
     assert.match(install, /SITE_URL="\$\{DWL_SITE_URL:-https:\/\/dwl\.test\}"/);
     assert.match(install, /VERSION="\$\{DWL_VERSION:-9\.9\.9\}"/);
     assert.doesNotMatch(install, /@@/);
+    for (const script of ['install.sh', 'uninstall.sh']) {
+        const body = readFileSync(join(out, 'public', script), 'utf8');
+        for (const [name, value] of [['UUID', release.uuid], ['REPO', release.repo], ['CHROME_ID', release.chromeExtensionId],
+            ['GECKO_ID', release.geckoId], ['HOST_NAME', release.hostName]])
+            assert.ok(body.includes(`${name}="\${DWL_${name}:-${value}}"`), `${script} ${name}`);
+    }
     assert.ok(existsSync(join(out, 'public/uninstall.sh')));
     assert.ok(existsSync(join(out, 'public/policies.py')));
     assert.deepEqual(JSON.parse(readFileSync(join(out, 'public/updates.json'), 'utf8')), {addons: {

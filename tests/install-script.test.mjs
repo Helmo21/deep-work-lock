@@ -1,16 +1,18 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, writeFileSync, chmodSync, mkdirSync, readFileSync} from 'node:fs';
+import {mkdtempSync, writeFileSync, chmodSync, mkdirSync, readFileSync, existsSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {RELEASE} from '../scripts/release-config.mjs';
 
 function sandbox({gdbusResult = "('successful',)", state = 1, chrome = true, firefox = true} = {}) {
     const dir = mkdtempSync(join(tmpdir(), 'dwl-install-'));
     const bin = join(dir, 'bin');
     mkdirSync(bin);
     const fake = (name, body) => { writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`); chmodSync(join(bin, name), 0o755); };
-    fake('gdbus', `case "$*" in *InstallRemoteExtension*) echo "${gdbusResult}";; *GetExtensionInfo*) echo "({'state': <${state}.0>, 'uuid': <'x'>},)";; *) echo "()";; esac`);
+    fake('gdbus', `printf '%s\\n' "$*" >> "${join(dir, 'gdbus.log')}"
+case "$*" in *InstallRemoteExtension*) echo "${gdbusResult}";; *GetExtensionInfo*) echo "({'state': <${state}.0>, 'uuid': <'x'>},)";; *) echo "()";; esac`);
     fake('gnome-shell', 'echo "GNOME Shell 46.0"');
     fake('sudo', 'echo "+ sudo $*"');
     if (chrome) fake('google-chrome', 'true');
@@ -20,6 +22,10 @@ function sandbox({gdbusResult = "('successful',)", state = 1, chrome = true, fir
     // This machine has real browsers: point detection at the fake bin only.
     return {dir, env: {...process.env, PATH: `${bin}:${process.env.PATH}`, DWL_HOME: join(dir, 'home'), DWL_ETC: join(dir, 'etc'),
         DWL_SITE_URL: 'https://dwl.test', DWL_VERSION: '0.2.0', DWL_DRY_RUN: '1', DWL_POLICIES_PY: 'scripts/policies.py',
+        // The raw scripts carry @@ placeholders that prepare-site fills from release.json.
+        DWL_UUID: RELEASE.uuid, DWL_REPO: RELEASE.repo, DWL_CHROME_ID: RELEASE.chromeExtensionId,
+        DWL_GECKO_ID: RELEASE.geckoId, DWL_HOST_NAME: RELEASE.hostName,
+        DWL_SNAP_FIREFOX: join(dir, 'no-snap-firefox'),
         DWL_CHROME_CANDIDATES: chrome ? join(bin, 'google-chrome') : '',
         DWL_FIREFOX_CANDIDATES: firefox ? join(bin, 'firefox') : ''}};
 }
@@ -147,4 +153,59 @@ test('uninstall forgets the extension in enabled- and disabled-extensions', () =
     assert.equal(read('enabled-extensions'), "['a@x']");
     assert.equal(read('disabled-extensions'), '[]');
     assert.match(r.stdout, /Deep Work Lock is uninstalled/);
+});
+
+const gdbusLog = dir => { try { return readFileSync(join(dir, 'gdbus.log'), 'utf8'); } catch { return ''; } };
+
+test('snap Firefox: the installer grants the portal permission itself', () => {
+    const {dir, env} = sandbox();
+    const snap = join(dir, 'snap-firefox');
+    writeFileSync(snap, '#!/bin/bash\n');
+    chmodSync(snap, 0o755);
+    // Already installed: EnableExtension does not re-run enable(), so only
+    // the installer can grant the permission (also covers a snap Firefox
+    // installed after the extension was enabled).
+    mkdirSync(join(dir, `home/.local/share/gnome-shell/extensions/${UUID}`), {recursive: true});
+    writeFileSync(join(dir, `home/.local/share/gnome-shell/extensions/${UUID}/metadata.json`), '{}');
+    const r = run({...env, DWL_SNAP_FIREFOX: snap});
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(gdbusLog(dir), new RegExp(
+        `--dest org\\.freedesktop\\.impl\\.portal\\.PermissionStore .*--method org\\.freedesktop\\.impl\\.portal\\.PermissionStore\\.SetPermission webextensions true ${RELEASE.hostName.replaceAll('.', '\\.')} snap\\.firefox \\['yes'\\]`));
+});
+
+test('no snap Firefox: no portal permission is touched', () => {
+    const {dir, env} = sandbox();
+    assert.equal(run(env).status, 0);
+    assert.doesNotMatch(gdbusLog(dir), /PermissionStore/);
+});
+
+test('snap Firefox without a Firefox policy (Chrome only detected) is skipped', () => {
+    const {dir, env} = sandbox({firefox: false});
+    const snap = join(dir, 'snap-firefox');
+    writeFileSync(snap, '');
+    // Not executable: not detected as a browser, and no grant.
+    assert.equal(run({...env, DWL_SNAP_FIREFOX: snap}).status, 0);
+    assert.doesNotMatch(gdbusLog(dir), /PermissionStore/);
+});
+
+test('an old developer install is reported, not removed', () => {
+    const {dir, env} = sandbox();
+    const old = join(dir, 'home/.local/share/gnome-shell/extensions/deep-work-lock@deepwork.local');
+    mkdirSync(old, {recursive: true});
+    const r = run(env);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /old developer copy of Deep Work Lock/);
+    assert.match(r.stdout, /deep-work-lock@deepwork\.local/);
+    assert.doesNotMatch(r.stdout, /^\+ .*rm .*deep-work-lock@deepwork\.local/m);
+    assert.ok(existsSync(old));
+});
+
+test('no old developer install: no warning', () => {
+    const {env} = sandbox();
+    assert.doesNotMatch(run(env).stdout, /old developer copy/);
+});
+
+test('tarball Firefox in /opt/firefox is a default candidate', () => {
+    const script = readFileSync('scripts/install.sh', 'utf8');
+    assert.match(script, /FIREFOX_CANDIDATES="\$\{DWL_FIREFOX_CANDIDATES-firefox \/snap\/bin\/firefox \/opt\/firefox\/firefox\}"/);
 });

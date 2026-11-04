@@ -17,9 +17,9 @@ set -euo pipefail
 SITE_URL="${DWL_SITE_URL:-https://example.invalid}"
 UUID="${DWL_UUID:-deep-work-lock@helmo21.github.io}"
 REPO="${DWL_REPO:-Helmo21/deep-work-lock}"
-CHROME_ID="jegdmipkacdhhlldnopafmjhakdmddik"
-GECKO_ID="deep-work-lock@deepwork.local"
-HOST_NAME="org.deepworklock.host"
+CHROME_ID="${DWL_CHROME_ID:-jegdmipkacdhhlldnopafmjhakdmddik}"
+GECKO_ID="${DWL_GECKO_ID:-deep-work-lock@deepwork.local}"
+HOST_NAME="${DWL_HOST_NAME:-org.deepworklock.host}"
 HOME_DIR="${DWL_HOME:-$HOME}"
 ETC_DIR="${DWL_ETC:-/etc}"
 SUDO="${DWL_SUDO:-sudo}"
@@ -62,14 +62,15 @@ get_policies_py() {
         fail 1 "Deep Work Lock was installed for your own account: run the command as your normal user, not as root." \
             "Nothing was changed."
     fi
+    local marker="@""@" value  # split so that publishing does not substitute it away
+    for value in "$SITE_URL" "$UUID" "$REPO" "$CHROME_ID" "$GECKO_ID" "$HOST_NAME"; do
+        [[ "$value" == *"$marker"* ]] || continue
+        fail 1 "This copy of uninstall.sh was not prepared for publishing." \
+            "Nothing was changed. Use the uninstall command shown on the Deep Work Lock website."
+    done
     if [[ -n "${DWL_POLICIES_PY:-}" ]]; then
         POLICIES_PY="$DWL_POLICIES_PY"
         return
-    fi
-    local marker="@""@"  # split so that publishing does not substitute it away
-    if [[ "$SITE_URL" == *"$marker"* ]]; then
-        fail 1 "This copy of uninstall.sh was not prepared for publishing." \
-            "Nothing was changed. Use the uninstall command shown on the Deep Work Lock website."
     fi
     POLICIES_PY="$WORK_DIR/policies.py"
     if ! run "$CURL" -fsSL -o "$POLICIES_PY" "$SITE_URL/policies.py"; then

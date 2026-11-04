@@ -22,9 +22,9 @@ SITE_URL="${DWL_SITE_URL:-https://example.invalid}"
 UUID="${DWL_UUID:-deep-work-lock@helmo21.github.io}"
 VERSION="${DWL_VERSION:-0.2.0}"
 REPO="${DWL_REPO:-Helmo21/deep-work-lock}"
-CHROME_ID="jegdmipkacdhhlldnopafmjhakdmddik"
-GECKO_ID="deep-work-lock@deepwork.local"
-HOST_NAME="org.deepworklock.host"
+CHROME_ID="${DWL_CHROME_ID:-jegdmipkacdhhlldnopafmjhakdmddik}"
+GECKO_ID="${DWL_GECKO_ID:-deep-work-lock@deepwork.local}"
+HOST_NAME="${DWL_HOST_NAME:-org.deepworklock.host}"
 HOME_DIR="${DWL_HOME:-$HOME}"
 ETC_DIR="${DWL_ETC:-/etc}"
 SUDO="${DWL_SUDO:-sudo}"
@@ -34,7 +34,10 @@ GSETTINGS="${DWL_GSETTINGS:-gsettings}"
 CURL="${DWL_CURL:-curl}"
 DRY_RUN="${DWL_DRY_RUN:-0}"
 CHROME_CANDIDATES="${DWL_CHROME_CANDIDATES-google-chrome /opt/google/chrome/chrome}"
-FIREFOX_CANDIDATES="${DWL_FIREFOX_CANDIDATES-firefox /snap/bin/firefox}"
+FIREFOX_CANDIDATES="${DWL_FIREFOX_CANDIDATES-firefox /snap/bin/firefox /opt/firefox/firefox}"
+SNAP_FIREFOX="${DWL_SNAP_FIREFOX:-/snap/bin/firefox}"
+# UUID of the old developer install (scripts/dev-install.sh before 0.2.0).
+OLD_DEV_UUID="deep-work-lock@deepwork.local"
 
 SHELL_EXTENSIONS=(--session --dest org.gnome.Shell.Extensions
     --object-path /org/gnome/Shell/Extensions)
@@ -172,10 +175,12 @@ check_system() {
             "Nothing was changed."
     fi
     local marker="@""@"  # split so that publishing does not substitute it away
-    if [[ "$SITE_URL" == *"$marker"* || "$VERSION" == *"$marker"* ]]; then
+    local value
+    for value in "$SITE_URL" "$UUID" "$VERSION" "$REPO" "$CHROME_ID" "$GECKO_ID" "$HOST_NAME"; do
+        [[ "$value" == *"$marker"* ]] || continue
         fail 1 "This copy of install.sh was not prepared for publishing." \
             "Nothing was changed. Use the install command shown on the Deep Work Lock website."
-    fi
+    done
 
     local version major
     if ! command -v gnome-shell >/dev/null 2>&1; then
@@ -279,6 +284,33 @@ install_gnome_extension() {
     fi
 }
 
+# An old developer install competes with this one for the same D-Bus name.
+# The public script only reports it: removing it is the user's call.
+warn_old_dev_install() {
+    local old="$HOME_DIR/.local/share/gnome-shell/extensions/$OLD_DEV_UUID"
+    [[ -e "$old" || -L "$old" ]] || return 0
+    say "Warning: an old developer copy of Deep Work Lock is installed in $old."
+    say "It competes with this one for the same D-Bus name. Remove it with:"
+    say "  $GNOME_EXTENSIONS uninstall $OLD_DEV_UUID   (or: rm -rf '$old')"
+    say "then log out and back in."
+}
+
+# Firefox in a snap asks the WebExtensions portal before starting the host,
+# and a dialog left unanswered is stored as a refusal. The extension grants
+# it on enable, but enable() does not run again for an extension that is
+# already on, nor when snap Firefox arrives later: grant it here as well.
+grant_snap_firefox() {
+    [[ "$FIREFOX" == "1" && -x "$SNAP_FIREFOX" ]] || return 0
+    if "$GDBUS" call --session --dest org.freedesktop.impl.portal.PermissionStore \
+        --object-path /org/freedesktop/impl/portal/PermissionStore \
+        --method org.freedesktop.impl.portal.PermissionStore.SetPermission \
+        webextensions true "$HOST_NAME" snap.firefox "['yes']" </dev/null >/dev/null 2>&1; then
+        say "Allowed snap Firefox to start the Deep Work Lock host."
+    else
+        say "Could not pre-allow snap Firefox; if Firefox asks, allow Deep Work Lock."
+    fi
+}
+
 install_browser_extension() {
     step "Installing the browser extension (asks for your password once)"
     local args=(install --etc "$ETC_DIR" --chrome-id "$CHROME_ID" --gecko-id "$GECKO_ID"
@@ -319,7 +351,9 @@ main() {
     WORK_DIR="$(mktemp -d)"
     trap 'rm -rf "$WORK_DIR"' EXIT
     check_system
+    warn_old_dev_install
     install_gnome_extension
+    grant_snap_firefox
     install_browser_extension
     summary
 }

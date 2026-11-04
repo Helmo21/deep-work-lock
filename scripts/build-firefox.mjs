@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {RELEASE} from './release-config.mjs';
 
 // Signing ties this id to the Mozilla account for good: never change it.
-export const GECKO_ID = 'deep-work-lock@deepwork.local';
+export const GECKO_ID = RELEASE.geckoId;
 const SHARED_FILES = ['background.js', 'lock.js', 'icons'];
 
 export function firefoxManifest(chromeManifest, siteUrl = RELEASE.siteUrl) {
