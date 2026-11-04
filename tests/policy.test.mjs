@@ -218,11 +218,18 @@ test('upgradeState converts a V1 file', () => {
 });
 
 test('decideStartup', () => {
-    assert.equal(decideStartup(null, 'B1', 0), 'none');
-    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, 'B1', 500), 'resume');
-    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, 'B1', 1500), 'restore');
-    assert.equal(decideStartup({bootId: 'B0', endsAt: 1000}, 'B1', 500), 'restore');
+    const x11 = {bootId: 'B1', shellInstance: 'S1', wayland: false};
+    const wl = {bootId: 'B1', shellInstance: 'S1', wayland: true};
+    assert.equal(decideStartup(null, x11, 0), 'none');
+    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000, shellInstance: 'S0'}, x11, 500), 'resume');
+    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, x11, 1500), 'restore');
+    assert.equal(decideStartup({bootId: 'B0', endsAt: 1000}, x11, 500), 'restore');
+    // Wayland: a new Shell process is a new login, window ids are meaningless
+    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000, shellInstance: 'S1'}, wl, 500), 'resume');
+    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000, shellInstance: 'S0'}, wl, 500), 'restore');
+    assert.equal(decideStartup({bootId: 'B1', endsAt: 1000}, wl, 500), 'restore');
 });
+
 
 test('pickAnnounced refuses an ambiguous late announcement', () => {
     const r = {x: 0, y: 0, width: 1920, height: 1080};

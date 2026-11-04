@@ -43,7 +43,7 @@ const TYPE_NAMES = new Map([
     [Meta.WindowType.NOTIFICATION, 'utility'],
 ]);
 
-/** Stable id: the X11 window id, which survives a GNOME Shell restart. */
+/** X11: the XID, stable across a Shell restart. Wayland: the stable sequence, valid for this Shell process only (see decideStartup). */
 export function windowId(win) {
     const match = (win.get_description() ?? '').match(/0x[0-9a-f]+/i);
     return match ? match[0].toLowerCase() : `seq-${win.get_stable_sequence()}`;

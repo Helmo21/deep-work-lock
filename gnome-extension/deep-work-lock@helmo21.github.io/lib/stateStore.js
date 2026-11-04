@@ -42,3 +42,20 @@ export function currentBootId() {
         return 'unknown';
     }
 }
+
+/** `${pid}:${starttime}` of this process, from /proc/self/stat; 'unknown' on failure. */
+export function currentShellInstance() {
+    try {
+        const [, bytes] = GLib.file_get_contents('/proc/self/stat');
+        const text = decoder.decode(bytes);
+        // comm (field 2) is parenthesised and may contain spaces: split after the last ')'.
+        const rest = text.slice(text.lastIndexOf(')') + 1).trim().split(/\s+/);
+        const pid = text.slice(0, text.indexOf(' '));
+        const start = rest[19]; // field 22, with rest[0] being field 3
+        if (!/^\d+$/.test(pid) || !/^\d+$/.test(start ?? ''))
+            return 'unknown';
+        return `${pid}:${start}`;
+    } catch {
+        return 'unknown';
+    }
+}

@@ -203,12 +203,16 @@ export function upgradeState(state) {
 
 /**
  * What to do with a session file found when the extension loads.
- * Same boot and not expired means GNOME Shell restarted: resume.
+ * env = {bootId, shellInstance, wayland}. Same boot and not expired means
+ * GNOME Shell restarted: resume. On Wayland a new Shell process is a new
+ * login and window ids are meaningless, so only the same process resumes.
  */
-export function decideStartup(state, bootId, nowMs) {
+export function decideStartup(state, env, nowMs) {
     if (!state)
         return 'none';
-    if (state.bootId === bootId && nowMs < state.endsAt)
-        return 'resume';
-    return 'restore';
+    if (state.bootId !== env.bootId || nowMs >= state.endsAt)
+        return 'restore';
+    if (env.wayland && state.shellInstance !== env.shellInstance)
+        return 'restore';
+    return 'resume';
 }

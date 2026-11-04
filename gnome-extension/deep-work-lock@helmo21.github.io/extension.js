@@ -2,12 +2,13 @@
 // timer runs out. There is deliberately no way to stop a session early.
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {decideStartup, upgradeState, BROWSERS} from './lib/policy.js';
-import {readState, writeState, clearState, currentBootId} from './lib/stateStore.js';
+import {readState, writeState, clearState, currentBootId, currentShellInstance} from './lib/stateStore.js';
 import {captureAndApply, applyPlan, restoreSettings, releaseSettings} from './lib/settingsGuard.js';
 import {WindowGuard, windowId, appIdOf, browserOfWindow} from './lib/windowGuard.js';
 import {FocusIndicator, SessionChrome} from './lib/panel.js';
@@ -21,7 +22,13 @@ export default class DeepWorkLockExtension extends Extension {
 
         // Crash/reboot recovery runs first, so nothing below can prevent it.
         const state = upgradeState(readState());
-        const startup = decideStartup(state, currentBootId(), Date.now());
+        const env = {
+            bootId: currentBootId(),
+            shellInstance: currentShellInstance(),
+            wayland: Meta.is_wayland_compositor(),
+        };
+        this._env = env;
+        const startup = decideStartup(state, env, Date.now());
         if (startup === 'restore') {
             log('previous session found after reboot or expiry: restoring settings');
             try {
@@ -100,7 +107,8 @@ export default class DeepWorkLockExtension extends Extension {
         const win = uiTarget.metaWindow ?? null;
         const state = {
             version: 2,
-            bootId: currentBootId(),
+            bootId: this._env.bootId,
+            shellInstance: this._env.shellInstance,
             startedAt: now,
             endsAt: now + minutes * 60_000,
             target: {
