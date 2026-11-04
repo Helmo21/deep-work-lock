@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Deep Work Lock",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Verrouille un onglet pendant une session Deep Work Lock (pilotée par l'extension GNOME).",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzT2bA3K7Cvt+s1Sq2eBztvXB1INohYF62/vD3CwNJrIsRioz14fk8NOGyG2h65uOQfKf0AjMqXzxRSFGXmumveZH6mbKa4MfrlqsZs0fhKRgdF3SNEjsQM5IKqX3uSXwlKoM9qUr3fQpYORxvhWcvoiDSWPDM+9l+vtCbC+ZSlnpipL3u0l1aEetaWw1WQRqo0AhF7xEFHvbwKAkAVjjXELjyo2hffPYcSVuoJ7dBGU8CRK+kzBQY822I3v4XtTSCbz185TE/swirDxcQf5n7Ogw1gw78FeAxMLdVUy1KIUfMZJa/7bwfeGeSMegep1MPDu/CCPe8YDAp4V5wVBfsQIDAQAB",
   "minimum_chrome_version": "116",

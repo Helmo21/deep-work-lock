@@ -6,3 +6,8 @@ build/
 web-ext-artifacts/
 *.xpi
 .env
+site/node_modules/
+site/.next/
+site/out/
+*.tsbuildinfo
+next-env.d.ts

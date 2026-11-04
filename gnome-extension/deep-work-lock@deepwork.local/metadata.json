@@ -4,5 +4,6 @@
   "description": "Verrouille l'écran sur une seule fenêtre, application ou onglet Chrome jusqu'à la fin du minuteur.",
   "shell-version": ["46"],
   "session-modes": ["user", "unlock-dialog"],
-  "url": ""
+  "url": "",
+  "version-name": "0.2.0"
 }
