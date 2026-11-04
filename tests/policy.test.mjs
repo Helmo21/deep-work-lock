@@ -37,7 +37,7 @@ test('formatRemaining', () => {
 });
 
 test('lockMessage', () => {
-    assert.equal(lockMessage(754000), '🔒 Verrouillé · 12:34 restantes');
+    assert.equal(lockMessage(754000), '🔒 Locked · 12:34 left');
 });
 
 test('override-redirect and the target itself are allowed', () => {

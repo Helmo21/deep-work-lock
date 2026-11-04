@@ -109,7 +109,7 @@ class FocusIndicator extends PanelMenu.Button {
 
     _buildMenu() {
         this.menu.box.add_style_class_name('dwl-menu');
-        this.menu.addMenuItem(header('DURÉE'));
+        this.menu.addMenuItem(header('DURATION'));
 
         const chipsItem = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
         const chips = new St.BoxLayout({style_class: 'dwl-chips'});
@@ -131,7 +131,7 @@ class FocusIndicator extends PanelMenu.Button {
         chipsItem.add_child(chips);
         this.menu.addMenuItem(chipsItem);
 
-        this.menu.addMenuItem(header('CIBLE'));
+        this.menu.addMenuItem(header('TARGET'));
         this._targetsSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._targetsSection);
 
@@ -175,7 +175,7 @@ class FocusIndicator extends PanelMenu.Button {
             this._customChip.remove_style_class_name('dwl-chip-on');
 
         const minutes = this._currentMinutes();
-        this._goButton.label = minutes ? `Verrouiller ${minutes} min` : 'Durée invalide (1–600)';
+        this._goButton.label = minutes ? `Lock for ${minutes} min` : 'Invalid duration (1–600)';
         this._goButton.reactive = !!minutes && !!this._selection;
         if (this._goButton.reactive)
             this._goButton.remove_style_pseudo_class('insensitive');
@@ -276,7 +276,7 @@ class FocusIndicator extends PanelMenu.Button {
                 } else {
                     this._addTarget(this._targetsSection, {
                         key: `win:${xid}`, kind: 'window', metaWindow: win, appId,
-                        icon: iconFor(app), title: win.get_title(), kindLabel: 'fenêtre',
+                        icon: iconFor(app), title: win.get_title(), kindLabel: 'window',
                     });
                 }
             }
@@ -287,7 +287,7 @@ class FocusIndicator extends PanelMenu.Button {
                 continue;
             const hint = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
             hint.add_child(new St.Label({
-                text: `Extension ${BROWSERS[browser].name} non connectée : onglets indisponibles`,
+                text: `${BROWSERS[browser].name} extension not connected: tabs unavailable`,
                 style_class: 'dwl-hint'}));
             this._targetsSection.addMenuItem(hint);
         }
@@ -313,20 +313,20 @@ class FocusIndicator extends PanelMenu.Button {
         sub.icon.gicon = icon.gicon ?? new Gio.ThemedIcon({name: BROWSERS[browser].icon});
         sub.label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
         sub.label.add_style_class_name('dwl-target-title');
-        sub.insert_child_below(new St.Label({text: `${count} onglet${count > 1 ? 's' : ''}`,
+        sub.insert_child_below(new St.Label({text: `${count} tab${count === 1 ? '' : 's'}`,
             style_class: 'dwl-kind', y_align: Clutter.ActorAlign.CENTER}), sub._triangleBin);
         this._targetsSection.addMenuItem(sub);
 
         const appId = appIdOf(win);
         this._addTarget(sub.menu, {
             key: `win:${windowId(win)}`, kind: 'window', metaWindow: win, appId,
-            browser, browserWindowId: browserWin.id, icon: null, title: 'Toute la fenêtre', kindLabel: 'fenêtre',
+            browser, browserWindowId: browserWin.id, icon: null, title: 'Whole window', kindLabel: 'window',
         });
         for (const tab of browserWin.tabs) {
             this._addTarget(sub.menu, {
                 key: `tab:${browser}:${tab.id}`, kind: 'tab', metaWindow: win, appId,
                 browser, browserWindowId: browserWin.id, tabId: tab.id,
-                icon: null, title: `${tab.active ? '◉' : '○'} ${tab.title || tab.url}`, kindLabel: 'onglet',
+                icon: null, title: `${tab.active ? '◉' : '○'} ${tab.title || tab.url}`, kindLabel: 'tab',
             });
         }
     }

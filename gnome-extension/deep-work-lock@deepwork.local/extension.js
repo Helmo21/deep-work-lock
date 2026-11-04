@@ -139,7 +139,7 @@ export default class DeepWorkLockExtension extends Extension {
             }).catch(e => {
                 log(`${browser} lock failed: ${e.message}`);
                 if (state.target.kind === 'tab')
-                    this._chrome.flashText(`${BROWSERS[browser].name} injoignable : verrou limité à la fenêtre`);
+                    this._chrome.flashText(`${BROWSERS[browser].name} unreachable: lock limited to the window`);
             });
         }
     }
@@ -188,7 +188,7 @@ export default class DeepWorkLockExtension extends Extension {
             this._indicator.setIdle();
             if (state.target.browser)
                 browserCall(state.target.browser, 'Unlock').catch(() => {});
-            global.display.get_sound_player().play_from_theme('complete', 'Session Deep Work terminée', null);
+            global.display.get_sound_player().play_from_theme('complete', 'Deep Work session finished', null);
             log('session finished');
         }
     }

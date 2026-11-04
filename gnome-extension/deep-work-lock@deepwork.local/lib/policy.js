@@ -24,7 +24,7 @@ export function formatRemaining(ms) {
 }
 
 export function lockMessage(ms) {
-    return `🔒 Verrouillé · ${formatRemaining(ms)} restantes`;
+    return `🔒 Locked · ${formatRemaining(ms)} left`;
 }
 
 const DIALOG_TYPES = new Set(['dialog', 'modal_dialog', 'utility', 'splash']);
