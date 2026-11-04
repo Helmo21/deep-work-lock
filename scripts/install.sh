@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# Deep Work Lock installer, meant to be run as:
+#   curl -fsSL <site>/install.sh | bash
+#
+# 1. checks the system, 2. hot-loads the GNOME extension from
+# extensions.gnome.org over D-Bus (falls back to the GitHub Release zip),
+# 3. writes the browser policies with a single sudo, 4. prints a summary.
+#
+# The whole body lives in main(), called on the last line, so a download cut
+# short never runs half a script. Nothing reads stdin: under `curl | bash`
+# stdin is the script itself.
+#
+# Every parameter can be overridden through a DWL_* variable (used by the
+# tests). DWL_DRY_RUN=1 prints each command that would change the system,
+# prefixed with "+ ", instead of running it; gdbus and the detection
+# commands still run (tests replace them with fakes).
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -euo pipefail
+
+SITE_URL="${DWL_SITE_URL:-@@SITE_URL@@}"
+UUID="${DWL_UUID:-deep-work-lock@helmo21.github.io}"
+VERSION="${DWL_VERSION:-@@VERSION@@}"
+REPO="${DWL_REPO:-Helmo21/deep-work-lock}"
+CHROME_ID="jegdmipkacdhhlldnopafmjhakdmddik"
+GECKO_ID="deep-work-lock@deepwork.local"
+HOST_NAME="org.deepworklock.host"
+HOME_DIR="${DWL_HOME:-$HOME}"
+ETC_DIR="${DWL_ETC:-/etc}"
+SUDO="${DWL_SUDO:-sudo}"
+GDBUS="${DWL_GDBUS:-gdbus}"
+GNOME_EXTENSIONS="${DWL_GNOME_EXTENSIONS:-gnome-extensions}"
+GSETTINGS="${DWL_GSETTINGS:-gsettings}"
+CURL="${DWL_CURL:-curl}"
+DRY_RUN="${DWL_DRY_RUN:-0}"
+CHROME_CANDIDATES="${DWL_CHROME_CANDIDATES-google-chrome /opt/google/chrome/chrome}"
+FIREFOX_CANDIDATES="${DWL_FIREFOX_CANDIDATES-firefox /snap/bin/firefox}"
+
+SHELL_EXTENSIONS=(--session --dest org.gnome.Shell.Extensions
+    --object-path /org/gnome/Shell/Extensions)
+
+step() { printf '→ %s\n' "$*"; }
+say() { printf '  %s\n' "$*"; }
+fail() {
+    local code="$1"
+    shift
+    printf '\n' >&2
+    printf '%s\n' "$@" >&2
+    exit "$code"
+}
+
+# Runs a command that changes the system, or only prints it in dry-run mode.
+run() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf '+'
+        printf ' %q' "$@"
+        printf '\n'
+    else
+        "$@" </dev/null
+    fi
+}
+
+# A browser counts as present when one of its candidates exists: a bare name
+# is looked up in PATH, an absolute path must be executable.
+has_browser() {
+    local candidate
+    for candidate in $1; do
+        if [[ "$candidate" == /* ]]; then
+            [[ -x "$candidate" ]] && return 0
+        elif command -v "$candidate" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+shell_call() {
+    "$GDBUS" call "${SHELL_EXTENSIONS[@]}" "$@" </dev/null 2>&1 || true
+}
+
+extension_active() {
+    shell_call --method org.gnome.Shell.Extensions.GetExtensionInfo "$UUID" \
+        | grep -q "'state': <1\.0>"
+}
+
+wait_until_active() {
+    local i
+    for ((i = 0; i < 15; i++)); do
+        extension_active && return 0
+        sleep 1
+    done
+    return 1
+}
+
+enable_in_gsettings() {
+    if [[ "$DRY_RUN" == "1" ]]; then
+        printf '+ %s: add %s to org.gnome.shell enabled-extensions\n' "$GSETTINGS" "$UUID"
+        return 0
+    fi
+    python3 - "$GSETTINGS" "$UUID" <<'PY'
+import ast, subprocess, sys
+gsettings, uuid = sys.argv[1], sys.argv[2]
+raw = subprocess.run([gsettings, "get", "org.gnome.shell", "enabled-extensions"],
+                     check=True, capture_output=True, text=True).stdout.strip()
+if raw.startswith("@as "):
+    raw = raw[4:]
+current = ast.literal_eval(raw) if raw else []
+if uuid not in current:
+    current.append(uuid)
+    subprocess.run([gsettings, "set", "org.gnome.shell", "enabled-extensions", str(current)],
+                   check=True)
+PY
+}
+
+install_from_release() {
+    local zip_url="https://github.com/$REPO/releases/download/v$VERSION/$UUID.shell-extension.zip"
+    local zip="$WORK_DIR/$UUID.shell-extension.zip"
+    say "extensions.gnome.org could not install it; using the GitHub release instead."
+    if ! run "$CURL" -fsSL -o "$zip" "$zip_url"; then
+        fail 1 "Deep Work Lock could not download $zip_url" \
+            "Nothing was changed. Check your connection and run the command again."
+    fi
+    if ! run "$GNOME_EXTENSIONS" install --force "$zip"; then
+        fail 1 "Deep Work Lock could not install the GNOME extension from $zip_url" \
+            "Nothing else was changed. Run the command again, or report the problem at https://github.com/$REPO/issues"
+    fi
+    if ! enable_in_gsettings; then
+        fail 1 "The GNOME extension is installed but could not be turned on." \
+            "Turn it on with: $GNOME_EXTENSIONS enable $UUID (after logging out and back in), then run the command again."
+    fi
+    FALLBACK=1
+}
+
+check_system() {
+    step "Checking your system"
+    if [[ "$(id -u)" == "0" ]]; then
+        fail 1 "Deep Work Lock installs for your own account: run the command as your normal user, not as root." \
+            "Nothing was changed."
+    fi
+    if [[ "$SITE_URL" == *@@* || "$VERSION" == *@@* ]]; then
+        fail 1 "This copy of install.sh was not prepared for publishing." \
+            "Nothing was changed. Use the install command shown on the Deep Work Lock website."
+    fi
+
+    local version major
+    if ! command -v gnome-shell >/dev/null 2>&1; then
+        fail 1 "Deep Work Lock needs GNOME Shell 46 to 49, and GNOME Shell was not found." \
+            "Nothing was changed."
+    fi
+    version="$(gnome-shell --version </dev/null 2>/dev/null || true)"
+    major="$(sed -n 's/^GNOME Shell \([0-9][0-9]*\).*/\1/p' <<<"$version")"
+    if [[ -z "$major" || "$major" -lt 46 || "$major" -gt 49 ]]; then
+        fail 1 "Deep Work Lock needs GNOME Shell 46 to 49 (found: ${version:-unknown})." \
+            "Nothing was changed."
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        fail 1 "Deep Work Lock needs python3. Install it (for example: apt install python3), then run the command again." \
+            "Nothing was changed."
+    fi
+    if ! python3 -c 'import gi' </dev/null >/dev/null 2>&1; then
+        fail 1 "Deep Work Lock needs the Python GObject bindings. Install them (for example: apt install python3-gi), then run the command again." \
+            "Nothing was changed."
+    fi
+    if ! command -v "$GDBUS" >/dev/null 2>&1; then
+        fail 1 "Deep Work Lock needs gdbus. Install it (for example: apt install libglib2.0-bin), then run the command again." \
+            "Nothing was changed."
+    fi
+
+    CHROME=0
+    FIREFOX=0
+    has_browser "$CHROME_CANDIDATES" && CHROME=1
+    has_browser "$FIREFOX_CANDIDATES" && FIREFOX=1
+    if [[ "$CHROME" == "0" && "$FIREFOX" == "0" ]]; then
+        fail 1 "Deep Work Lock needs Google Chrome or Firefox, and neither was found." \
+            "Nothing was changed. Install one of them, then run the command again."
+    fi
+
+    if [[ -n "${DWL_POLICIES_PY:-}" ]]; then
+        POLICIES_PY="$DWL_POLICIES_PY"
+    else
+        POLICIES_PY="$WORK_DIR/policies.py"
+        if ! run "$CURL" -fsSL -o "$POLICIES_PY" "$SITE_URL/policies.py"; then
+            fail 1 "Deep Work Lock could not download $SITE_URL/policies.py" \
+                "Nothing was changed. Check your connection and run the command again."
+        fi
+    fi
+}
+
+install_gnome_extension() {
+    step "Installing the GNOME extension from extensions.gnome.org"
+    FALLBACK=0
+    local result=""
+    if [[ -f "$HOME_DIR/.local/share/gnome-shell/extensions/$UUID/metadata.json" ]]; then
+        result="$(shell_call --method org.gnome.Shell.Extensions.EnableExtension "$UUID")"
+        if [[ "$result" == *true* ]]; then
+            say "Already installed: turned it on."
+            result="'successful'"
+        else
+            result=""
+        fi
+    fi
+    if [[ -z "$result" ]]; then
+        say "Confirm the GNOME dialog that opens now."
+        # The call blocks until the dialog is answered.
+        result="$(shell_call --timeout 600 \
+            --method org.gnome.Shell.Extensions.InstallRemoteExtension "$UUID")"
+    fi
+
+    case "$result" in
+        *"'cancelled'"*)
+            fail 2 "You cancelled the GNOME dialog. Run the command again when you are ready." \
+                "Nothing else was changed."
+            ;;
+        *"'successful'"*)
+            if ! wait_until_active; then
+                say "GNOME installed the extension but has not started it yet."
+                FALLBACK=1
+            fi
+            ;;
+        *)
+            install_from_release
+            ;;
+    esac
+
+    if [[ "$FALLBACK" == "0" ]]; then
+        local manifest="$HOME_DIR/.config/google-chrome/NativeMessagingHosts/$HOST_NAME.json"
+        local i
+        for ((i = 0; i < 5; i++)); do
+            [[ -f "$manifest" ]] && break
+            sleep 1
+        done
+        if [[ ! -f "$manifest" ]]; then
+            fail 1 "The GNOME extension is running but did not connect itself to the browsers ($manifest is missing)." \
+                "Log out and back in, then run the command again. If it keeps failing, report it at https://github.com/$REPO/issues"
+        fi
+    fi
+}
+
+install_browser_extension() {
+    step "Installing the browser extension (asks for your password once)"
+    local args=(install --etc "$ETC_DIR" --chrome-id "$CHROME_ID" --gecko-id "$GECKO_ID"
+        --install-url "$SITE_URL/releases/deep-work-lock-latest.xpi")
+    [[ "$CHROME" == "1" ]] && args+=(--chrome)
+    [[ "$FIREFOX" == "1" ]] && args+=(--firefox)
+    if ! run "$SUDO" python3 "$POLICIES_PY" "${args[@]}"; then
+        fail 1 "The GNOME extension is installed, but the browser extension could not be set up." \
+            "Run the command again to retry this step (it needs your password)."
+    fi
+}
+
+summary() {
+    local browsers
+    if [[ "$CHROME" == "1" && "$FIREFOX" == "1" ]]; then
+        browsers="Chrome and Firefox"
+    elif [[ "$CHROME" == "1" ]]; then
+        browsers="Chrome"
+    else
+        browsers="Firefox"
+    fi
+    printf '\nDeep Work Lock is installed:\n'
+    if [[ "$FALLBACK" == "1" ]]; then
+        say "• GNOME extension $UUID (starts after you log back in)"
+    else
+        say "• GNOME extension $UUID (running)"
+    fi
+    say "• browser extension for $browsers"
+    printf '\nRestart %s to see the extension.\n' "$browsers"
+    if [[ "$FALLBACK" == "1" ]]; then
+        printf 'Log out and back in to finish, then click ◉ Focus in the top bar.\n'
+    else
+        printf 'Click ◉ Focus in the top bar.\n'
+    fi
+}
+
+main() {
+    WORK_DIR="$(mktemp -d)"
+    trap 'rm -rf "$WORK_DIR"' EXIT
+    check_system
+    install_gnome_extension
+    install_browser_extension
+    summary
+}
+
+main "$@"

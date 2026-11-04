@@ -4,17 +4,19 @@ Un verrou de concentration pour GNOME (X11). Tu choisis une durée et une seule 
 
 ## Installation
 
+Installation publique : `scripts/install.sh` (servi par le site, `curl -fsSL <site>/install.sh | bash`). Désinstallation : `scripts/uninstall.sh` (restaure aussi les réglages si une session était en cours).
+
+### Développement
+
 ```bash
-./install.sh
+scripts/dev-install.sh
 ```
 
-Puis :
+Le script construit le dépôt (`npm run build`), retire l'ancienne installation développeur (`deep-work-lock@deepwork.local`), lie `build/gnome/deep-work-lock@helmo21.github.io` dans `~/.local/share/gnome-shell/extensions/` et active l'extension. L'extension écrit elle-même les manifestes d'hôte Chrome et Firefox à l'activation, et autorise le portail pour Firefox en snap.
 
-1. Déconnecte-toi et reconnecte-toi (ou Alt+F2, `r`, Entrée en X11), puis `gnome-extensions enable deep-work-lock@deepwork.local`.
-2. Dans Chrome : `chrome://extensions` → Mode développeur → « Charger l'extension non empaquetée » → dossier `chrome-extension/`.
-3. Dans Firefox : installe le `.xpi` signé (voir ci-dessous) en le glissant dans une fenêtre Firefox. Pour tester avant la signature : `about:debugging#/runtime/this-firefox` → « Charger un module complémentaire temporaire » → `build/firefox/manifest.json` (retiré à la fermeture de Firefox).
-
-`install.sh` installe aussi le manifeste d'hôte Firefox (`~/.mozilla/native-messaging-hosts/`) et, pour Firefox en snap, autorise le portail système à lancer l'hôte `org.deepworklock.host` (et lui seul). Sans cela, le portail pose la question une fois, et sa fenêtre peut ne pas s'afficher : un délai sans réponse compte comme un refus définitif.
+1. Première installation : déconnecte-toi et reconnecte-toi, puis `gnome-extensions enable deep-work-lock@helmo21.github.io`.
+2. Dans Chrome : `chrome://extensions` → Mode développeur → « Charger l'extension non empaquetée » → dossier `build/chrome/`.
+3. Dans Firefox : `about:debugging#/runtime/this-firefox` → « Charger un module complémentaire temporaire » → `build/firefox/manifest.json` (retiré à la fermeture de Firefox), ou le `.xpi` signé (voir ci-dessous).
 
 ### Firefox : signature de l'extension
 
@@ -28,8 +30,6 @@ Firefox n'installe de façon permanente qu'une extension signée par Mozilla. El
 3. Le `.xpi` signé arrive dans `web-ext-artifacts/` (non versionné). Glisse-le dans Firefox.
 
 L'identifiant de l'extension, `deep-work-lock@deepwork.local`, est lié au compte dès la première signature : il ne doit plus jamais changer.
-
-Désinstallation : `./uninstall.sh` (restaure aussi les réglages si une session était en cours).
 
 ## Utilisation
 
