@@ -1,2 +1,3 @@
+# sharp is not needed: next.config.mjs sets images.unoptimized, so skip its build script.
 allowBuilds:
   sharp: false

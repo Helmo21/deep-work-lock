@@ -10,16 +10,29 @@ type Props = {
 }
 
 export function CopyCommand({ command, id, compact = false }: Props) {
-  const [copied, setCopied] = useState(false)
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const codeRef = useRef<HTMLElement>(null)
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current)
   }, [])
 
+  const selectCommand = () => {
+    const node = codeRef.current
+    const sel = window.getSelection()
+    if (!node || !sel) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+
   const copy = async () => {
+    let ok = false
     try {
       await navigator.clipboard.writeText(command)
+      ok = true
     } catch {
       // Clipboard API unavailable (insecure context): fall back to a hidden textarea.
       const area = document.createElement('textarea')
@@ -30,15 +43,21 @@ export function CopyCommand({ command, id, compact = false }: Props) {
       document.body.appendChild(area)
       area.select()
       try {
-        document.execCommand('copy')
+        ok = document.execCommand('copy')
+      } catch {
+        ok = false
       } finally {
         document.body.removeChild(area)
       }
     }
-    setCopied(true)
+    if (!ok) selectCommand()
+    setState(ok ? 'copied' : 'failed')
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => setCopied(false), 2000)
+    timer.current = setTimeout(() => setState('idle'), ok ? 2000 : 5000)
   }
+
+  const label =
+    state === 'copied' ? 'Copied' : state === 'failed' ? 'Press Ctrl+C' : compact ? '' : 'Copy'
 
   return (
     <div
@@ -49,6 +68,7 @@ export function CopyCommand({ command, id, compact = false }: Props) {
     >
       <span className="text-gray-500 select-none shrink-0">$</span>
       <code
+        ref={codeRef}
         className={`font-mono text-white min-w-0 flex-1 ${
           compact ? 'whitespace-nowrap overflow-x-auto' : 'break-all'
         }`}
@@ -58,14 +78,15 @@ export function CopyCommand({ command, id, compact = false }: Props) {
       <button
         type="button"
         onClick={copy}
-        aria-label={copied ? 'Copied to clipboard' : 'Copy command to clipboard'}
+        aria-label="Copy command to clipboard"
         className="shrink-0 flex items-center gap-1.5 text-gray-400 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white transition-colors"
       >
-        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-        <span className="text-xs font-mono" aria-live="polite">
-          {copied ? 'Copied' : compact ? '' : 'Copy'}
-        </span>
+        {state === 'copied' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+        <span className="text-xs font-mono" aria-hidden="true">{label}</span>
       </button>
+      <span className="sr-only" role="status" aria-live="polite">
+        {state === 'copied' ? 'Copied to clipboard' : state === 'failed' ? 'Copy failed. Command selected, press Ctrl+C.' : ''}
+      </span>
     </div>
   )
 }
