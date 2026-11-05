@@ -20,9 +20,9 @@ set -euo pipefail
 
 SITE_URL="${DWL_SITE_URL:-https://deepwork-lock.up.railway.app}"
 UUID="${DWL_UUID:-deep-work-lock@helmo21.github.io}"
-VERSION="${DWL_VERSION:-0.2.0}"
+VERSION="${DWL_VERSION:-0.2.1}"
 REPO="${DWL_REPO:-Helmo21/deep-work-lock}"
-CHROME_ID="${DWL_CHROME_ID:-jegdmipkacdhhlldnopafmjhakdmddik}"
+CHROME_ID="${DWL_CHROME_ID:-llneijbapcdcjcbkecnkdmfaekhpimjl}"
 GECKO_ID="${DWL_GECKO_ID:-deep-work-lock@deepwork.local}"
 HOST_NAME="${DWL_HOST_NAME:-org.deepworklock.host}"
 HOME_DIR="${DWL_HOME:-$HOME}"

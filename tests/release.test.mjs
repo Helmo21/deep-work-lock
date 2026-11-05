@@ -6,7 +6,7 @@ import {RELEASE, PLACEHOLDER_SITE_URL, chromeExtensionIdOf, extensionDir} from '
 const json = p => JSON.parse(readFileSync(p, 'utf8'));
 
 test('one version everywhere', () => {
-    assert.equal(RELEASE.version, '0.2.0');
+    assert.equal(RELEASE.version, '0.2.1');
     assert.equal(json('package.json').version, RELEASE.version);
     assert.equal(json('chrome-extension/manifest.json').version, RELEASE.version);
 });
@@ -26,8 +26,8 @@ test('metadata for extensions.gnome.org', () => {
 });
 
 test('chrome extension id derives from the manifest key', () => {
-    assert.equal(chromeExtensionIdOf(json('chrome-extension/manifest.json').key), 'jegdmipkacdhhlldnopafmjhakdmddik');
-    assert.equal(RELEASE.chromeExtensionId, 'jegdmipkacdhhlldnopafmjhakdmddik');
+    assert.equal(chromeExtensionIdOf(json('chrome-extension/manifest.json').key), 'llneijbapcdcjcbkecnkdmfaekhpimjl');
+    assert.equal(RELEASE.chromeExtensionId, 'llneijbapcdcjcbkecnkdmfaekhpimjl');
 });
 
 test('ids and uuid', () => {

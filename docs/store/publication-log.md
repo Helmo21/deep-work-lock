@@ -195,20 +195,27 @@ L'onglet s'appelle **« Privacy »** dans le menu de gauche (Build), et non « P
 
 « Submit for review », le 5 novembre 2026.
 
-## 8. À faire : l'identifiant Chrome
+## 8. Changement d'identifiant Chrome (version 0.2.1)
 
-Sans `key` dans le zip, le Chrome Web Store a attribué **un nouvel identifiant**. Sur la capture du tableau de bord, il se lit `llneijbapcdcjcbkecnkdmfaekhpimjl`, à confirmer par copier-coller. L'ancien était `jegdmipkacdhhlldnopafmjhakdmddik`.
+Sans `key` dans le zip, le Chrome Web Store a attribué **un nouvel identifiant** : `llneijbapcdcjcbkecnkdmfaekhpimjl`. L'ancien, tiré de la clé de développement, était `jegdmipkacdhhlldnopafmjhakdmddik`.
 
-Tant que le code garde l'ancien identifiant, la politique Chrome posée par `install.sh` désigne une extension qui n'existe pas, et l'hôte natif refuse l'origine du vrai module. Il faut donc :
+Avec l'ancien identifiant dans le code, deux choses cassaient :
+- la politique Chrome posée par `install.sh` désignait une extension qui n'existe pas ;
+- l'hôte natif refusait l'origine du vrai module.
 
-1. Récupérer dans le tableau de bord l'identifiant exact et la **clé publique** (Package, « View public key »).
-2. Mettre à jour :
+Ce qui a été fait :
+
+1. Clé publique récupérée dans le tableau de bord (Package, « View public key »). L'identifiant recalculé à partir de cette clé (SHA-256 des 32 premiers caractères hexadécimaux, chaque chiffre de 0 à f transposé en lettre de a à p) donne bien `llneijbapcdcjcbkecnkdmfaekhpimjl`.
+2. Mises à jour :
    - `chromeExtensionId` dans `release.json` ;
    - `CHROME_EXTENSION_ID` dans `gnome-extension/deep-work-lock@helmo21.github.io/lib/constants.js` ;
-   - `key` dans `chrome-extension/manifest.json`, avec la clé publique du store ;
-   - l'identifiant attendu dans `tests/release.test.mjs`.
-3. `npm test`, `npm run prepare-site`, commit et push : Railway redéploie `install.sh`.
-4. Publier une nouvelle version GNOME (0.2.1) sur extensions.gnome.org et dans une release GitHub, pour que les hôtes installés acceptent la nouvelle origine.
+   - `key` dans `chrome-extension/manifest.json` : la clé publique du store, sans les lignes `-----BEGIN/END-----`. Les builds de développement gardent ainsi l'identifiant du store.
+   - les valeurs attendues dans `tests/release.test.mjs`.
+3. Passage en **0.2.1** partout : `release.json`, `package.json`, `package-lock.json`, manifeste Chrome, `version-name` GNOME. Le test « one version everywhere » l'exige. L'extension GNOME change, elle doit donc être renvoyée sur extensions.gnome.org.
+4. `npm run prepare-site`, `npm run build`, `node scripts/build-chrome.mjs --store`, `npm test`.
+5. Firefox re-signé en 0.2.1, car `updates.json` suit la version. Cette version n'a plus `<all_urls>`.
+6. Commit, push, release GitHub `v0.2.1`.
+7. Envoi du zip GNOME 0.2.1 sur extensions.gnome.org. Le paquet Chrome 0.2.0 déjà en revue n'a pas besoin d'être renvoyé : son code est identique, seul le numéro de version diffère.
 
 ## 9. Reste à valider en vrai
 
