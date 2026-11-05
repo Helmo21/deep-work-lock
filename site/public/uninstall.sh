@@ -14,7 +14,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -euo pipefail
 
-SITE_URL="${DWL_SITE_URL:-https://example.invalid}"
+SITE_URL="${DWL_SITE_URL:-https://deepwork-lock.up.railway.app}"
 UUID="${DWL_UUID:-deep-work-lock@helmo21.github.io}"
 REPO="${DWL_REPO:-Helmo21/deep-work-lock}"
 CHROME_ID="${DWL_CHROME_ID:-jegdmipkacdhhlldnopafmjhakdmddik}"
