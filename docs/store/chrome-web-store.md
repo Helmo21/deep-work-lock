@@ -33,7 +33,7 @@ Keep the browser on one chosen tab for the duration of a focus session started f
 - `declarativeNetRequest`: during a session, block main-frame requests of the locked tab (and its popups) that leave the locked site, so the restriction holds before the page loads.
 - `webNavigation`: detect top-level navigations before they commit, so the tab can be reverted to the locked page.
 - `storage`: keep the session state in `chrome.storage.session` so the lock survives the service worker being suspended. Cleared when the browser closes.
-- Host permission `<all_urls>`: the locked site is chosen by the user at run time and can be any site, so the extension must be able to act on any URL. It reads no page content and injects no script.
+- No host permissions: tab URLs come from `tabs` and `webNavigation`, and the only `declarativeNetRequest` rule is a plain `block`, which needs none.
 
 ## Privacy policy URL
 
